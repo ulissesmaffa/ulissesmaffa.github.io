@@ -1,0 +1,253 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Caminho do Dado no URSA v3</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Leiaute: barra de controle; depois o caminho do dado em três colunas (A à esquerda, B em cima do array, C à direita); narrativa do ciclo embaixo. */
+:root{--bg:#f7f6f2;--fg:#17201d;--mut:#5c6661;--line:#d6d9d2;--panel:#fff;
+ --a:#d9611f;--a2:#fbe3d3;--b:#2a6fc4;--b2:#d7e5f8;--f:#7b63c2;--f2:#e5ddf6;--c:#1f9a6e;--c2:#d2f0e2;--hl:#ffe9a8;
+ --sans:"IBM Plex Sans",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15191a;--fg:#e7eae6;--mut:#9aa39e;--line:#2d3432;--panel:#1d2324;
+ --a:#f08a4b;--a2:#4a2d1c;--b:#6fa6ea;--b2:#1f3350;--f:#a995e6;--f2:#2f2846;--c:#4dc593;--c2:#1b3b2e;--hl:#5a4a16;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#15191a;--fg:#e7eae6;--mut:#9aa39e;--line:#2d3432;--panel:#1d2324;
+ --a:#f08a4b;--a2:#4a2d1c;--b:#6fa6ea;--b2:#1f3350;--f:#a995e6;--f2:#2f2846;--c:#4dc593;--c2:#1b3b2e;--hl:#5a4a16;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:13px;line-height:1.4;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px}
+h1{font-size:18px;margin:0 0 2px;font-weight:600}.sub{color:var(--mut);margin:0 0 10px;max-width:78ch}
+.bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.bar label{display:flex;gap:4px;align-items:center;color:var(--mut);font-size:12px}
+.bar input,.bar select{font:inherit;width:50px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg)}.bar select{width:auto}
+button{font:inherit;font-weight:500;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg);cursor:pointer}
+button:hover{border-color:var(--mut)}button:focus-visible{outline:2px solid var(--b);outline-offset:1px}button.primary{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.cyc{font-family:var(--mono);font-size:15px;font-weight:500;min-width:12ch}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) minmax(0,1fr);gap:12px;margin-top:12px}
+@media (max-width:1000px){.grid{grid-template-columns:1fr}}
+.panel{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:10px;min-width:0}
+.panel h2{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:0 0 6px;font-weight:600}
+h3{font-size:12px;margin:10px 0 4px;font-weight:600}
+.word{display:inline-flex;align-items:center;gap:0;margin:2px 6px 2px 0;border:1px solid var(--line);border-radius:5px;overflow:hidden;font-family:var(--mono);font-size:11px;background:var(--panel)}
+.word .k{padding:2px 6px;background:var(--bg);color:var(--mut);border-right:1px solid var(--line)}
+.word .byte{padding:2px 7px;min-width:14px;text-align:center;border-right:1px solid var(--line)}.word .byte:last-child{border-right:0}
+.word.A{border-color:var(--a)}.word.B{border-color:var(--b)}.word.F{border-color:var(--f);background:var(--f2)}
+.word.now{box-shadow:0 0 0 2px var(--hl)}.word .byte.on{background:var(--a2)}.word.B .byte.on{background:var(--b2)}
+.word.empty{opacity:.35}
+.reg{display:inline-block;border:1px solid var(--line);border-radius:5px;padding:3px 7px;font-family:var(--mono);font-size:11px;margin:2px 4px 2px 0;background:var(--panel)}
+.reg .n{color:var(--mut)}.reg.skew{border-color:var(--f);background:var(--f2)}.reg.edgeA{border-color:var(--a);background:var(--a2)}.reg.edgeB{border-color:var(--b);background:var(--b2)}
+.reg.zero{opacity:.55}
+.path{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:4px 0}
+.arrow{color:var(--mut);font-size:16px}
+.pes{display:inline-grid;gap:6px;margin:6px 0}
+.pe{width:118px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:var(--mono);font-size:10.5px;background:var(--panel)}
+.pe.on{border-color:var(--a);background:var(--a2)}.pe .t{color:var(--mut)}.pe .ba{font-size:14px;font-weight:500;margin-top:2px}
+.pe .mul{color:var(--mut)}
+.lane{display:flex;gap:6px;align-items:flex-start}
+.colB{display:inline-grid;gap:6px;margin-bottom:4px}
+.rowA{display:grid;gap:6px;margin-right:6px;margin-top:33px}
+.mat{display:inline-grid;gap:1px;background:var(--line);border:1px solid var(--line);font-family:var(--mono);font-size:11px}
+.mat .cell{background:var(--panel);min-width:24px;height:20px;display:flex;align-items:center;justify-content:center}
+.mat .cell.ok{background:var(--c2)}.mat .cell.now{background:var(--c);color:#fff}
+.story{margin-top:12px}
+.story ol{margin:4px 0 0 18px;padding:0}.story li{margin:3px 0}
+.story .who{font-family:var(--mono);font-weight:500}
+.st{color:var(--mut);font-size:12px;margin-top:2px}
+.gantt{margin-top:10px}.ln{display:grid;grid-template-columns:76px 1fr;gap:6px;align-items:center;margin:3px 0}.ln .n{font-family:var(--mono);font-size:11px;text-align:right;color:var(--mut)}
+.ln .b{height:13px;display:flex;border:1px solid var(--line);border-radius:3px;overflow:hidden;position:relative}.ln .s{height:100%;flex:none}.cur{position:absolute;top:0;bottom:0;width:2px;background:var(--fg)}
+.leg{display:flex;gap:12px;flex-wrap:wrap;color:var(--mut);font-size:11px;margin-top:6px}.leg i{display:inline-block;width:12px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:3px}
+kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:3px;padding:0 4px}
+.note{color:var(--mut);font-size:12px;max-width:85ch;margin-top:10px}
+</style>
+
+<h1>Caminho do dado no URSA v3</h1>
+<p class="sub">Da palavra na memória até o acumulador de cada PE, um ciclo por vez. Os nomes são os do código: <span style="font-family:var(--mono)">s_a, s_b, s_c</span> (filas), <span style="font-family:var(--mono)">dA, dB</span> (registradores de skew), <span style="font-family:var(--mono)">in_mtx_a_li[i], in_mtx_b_tw[j]</span> (borda do array), e em cada PE <span style="font-family:var(--mono)">li, tw, ri, bw, ba</span>. Avance com os botões ou <kbd>→</kbd> <kbd>←</kbd>.</p>
+
+<div class="bar">
+  <label>n <select id="n"><option selected>2</option><option>4</option></select></label>
+  <label>P <input id="P" type="number" value="2" min="2"></label>
+  <label>M <input id="M" type="number" value="2" min="1" max="16"></label>
+  <label>Q <input id="Q" type="number" value="4" min="2"></label>
+  <label>profundidade das filas <input id="depth" type="number" value="4" min="1" max="32"></label>
+  <label>latência do burst <input id="lat" type="number" value="0" min="0" max="30"></label>
+  <label>semente <input id="seed" type="number" value="1" min="0"></label>
+  <button id="reset">Reconstruir</button>
+  <span style="flex:1"></span>
+  <button id="first">⏮</button><button id="back">◀ ciclo</button>
+  <span class="cyc" id="cyc"></span>
+  <button id="fwd" class="primary">ciclo ▶</button><button id="last">⏭</button>
+</div>
+
+<div class="grid">
+  <div class="panel">
+    <h2>Operando A: memória → s_a → skew → borda esquerda</h2>
+    <h3>Janela A (palavras tile-major; palavra k = coluna k de A, um byte por linha do tile)</h3>
+    <div id="memA"></div>
+    <div class="st">o <span class="who">read_a</span> lê uma palavra por ciclo (burst) e a põe em s_a; na primeira linha de tiles guarda uma cópia em a_buf, nas seguintes repete a_buf</div>
+    <h3>s_a (FIFO, profundidade <span id="dA_depth"></span>)</h3>
+    <div id="fifoA"></div>
+    <h3>Skew e borda: byte i da palavra tirada vai para a linha i, atrasado i ciclos</h3>
+    <div id="skewA"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Operando B: memória → s_b → skew → borda de cima &nbsp;|&nbsp; Array</h2>
+    <h3>Janela B (palavra k = linha k de B, um byte por coluna do tile)</h3>
+    <div id="memB"></div>
+    <h3>s_b (FIFO)</h3>
+    <div id="fifoB"></div>
+    <h3>Skew e borda: byte j vai para a coluna j, atrasado j ciclos</h3>
+    <div id="skewB"></div>
+    <h3>Array <span style="font-family:var(--mono);font-weight:400">sa.pe[i][j]</span>: <span style="font-family:var(--mono);font-weight:400">li</span> vem da esquerda (ri do vizinho), <span style="font-family:var(--mono);font-weight:400">tw</span> vem de cima (bw do vizinho); <span style="font-family:var(--mono);font-weight:400">ba += li·tw</span></h3>
+    <div id="arr"></div>
+    <h3>Sombra (cópia dos acumuladores no último passo do tile) e s_c</h3>
+    <div id="shadow"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Saída: s_c → write_c → janela C</h2>
+    <div id="wc" class="st"></div>
+    <h3>C (tile-major; a célula verde escura é o beat deste ciclo)</h3>
+    <div id="matC"></div>
+    <h3>Contadores</h3>
+    <pre id="cnt" style="font-family:var(--mono);font-size:11px;margin:0;white-space:pre-wrap"></pre>
+  </div>
+</div>
+
+<div class="panel story">
+  <h2>O que aconteceu neste ciclo</h2>
+  <ol id="story"></ol>
+</div>
+
+<div class="panel gantt">
+  <h2>Cronograma</h2>
+  <div id="gantt"></div>
+  <div class="leg"><span><i style="background:var(--a)"></i>A da memória</span><span><i style="background:var(--a2)"></i>A repetido do a_buf</span><span><i style="background:var(--b)"></i>B da memória</span><span><i style="background:#9a9a9a"></i>latência</span><span><i style="background:#d9d9d9"></i>fila cheia / espera</span><span><i style="background:#f0a35e"></i>passo com dado</span><span><i style="background:var(--a2)"></i>esvaziamento (zeros)</span><span><i style="background:var(--f)"></i>escrita em C</span></div>
+</div>
+<p class="note">Fiel ao shell.cpp, sa.cpp e pe.cpp do v3: a cada iteração do laço CK o compute (1) manda uma linha do sombra para s_c se houver, (2) tira uma palavra de s_a e uma de s_b enquanto t &lt; M, senão usa zeros, (3) faz o skew em registradores (linha i e coluna j atrasadas i e j ciclos), (4) chama sa_compute: as bordas entram em li e tw dos PEs da primeira coluna e da primeira linha, os demais PEs recebem li do ri do vizinho à esquerda e tw do bw do vizinho de cima, e todos fazem ri = li, bw = tw, ba += li·tw, (5) no último passo do tile copia os ba para o sombra e zera o array. O que não é do IP: a profundidade das filas é ajustável (no IP é 32) e a latência de burst é um valor fixo por burst. Os valores de A estão em −2..2 e os de B em 0..3 só para caber na tela; o C final é conferido contra A·B.</p>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+let cfg,trace=[],cur=0;
+function rng(seed){let s=(seed+7)>>>0||1;return()=>{s^=s<<13;s>>>=0;s^=s>>>17;s^=s<<5;s>>>=0;return s/4294967296}}
+function build(){
+  const n=+$('n').value,depth=+$('depth').value,lat=+$('lat').value,seed=+$('seed').value;
+  const P=Math.max(n,Math.ceil(+$('P').value/n)*n),Q=Math.max(n,Math.ceil(+$('Q').value/n)*n),M=Math.max(1,Math.min(16,+$('M').value));
+  $('P').value=P;$('Q').value=Q;$('M').value=M;$('dA_depth').textContent=depth;
+  const r=rng(seed);
+  const A=Array.from({length:P},()=>Array.from({length:M},()=>Math.floor(r()*5)-2));
+  const B=Array.from({length:M},()=>Array.from({length:Q},()=>Math.floor(r()*4)));
+  const rows=P/n,cols=Q/n,NT=rows*cols,T=M+2*n-2,perWord=Math.min(n,2),beats=Math.max(1,n/2);
+  cfg={n,P,M,Q,depth,lat,A,B,rows,cols,NT,T,perWord,beats};
+  const s={sa:[],sb:[],sc:[],ra:{row:0,w:0,phase:'first',rep:0,lat},rb:{row:0,n:0,lat},abuf:Array(M).fill(false),tile:0,t:0,
+    pe:Array.from({length:n},()=>Array.from({length:n},()=>({li:0,tw:0,ri:0,bw:0,ba:0}))),
+    dA:Array.from({length:n},()=>Array(n).fill(0)),dB:Array.from({length:n},()=>Array(n).fill(0)),
+    inA:Array(n).fill(0),inB:Array(n).fill(0),shadow:null,shadowTile:-1,drain:n,wc:null,
+    C:Array.from({length:P},()=>Array(Q).fill(null)),cnt:{aMem:0,aRep:0,bMem:0,steps:0,stalls:0,beats:0}};
+  trace=[];let g=0;
+  while(g++<30000){
+    const ev={ra:'idle',rb:'idle',ck:'idle',wc:'idle',story:[],pushA:null,pushB:null,pop:null,wcells:[],step:null,active:false};
+    // write_c
+    if(s.wc===null&&s.sc.length){const x=s.sc.shift();s.wc={tile:x.tile,row:x.row,vals:x.vals,beat:0};ev.story.push(['write_c',`tira da fila s_c a linha ${x.row} do tile ${x.tile}: [${x.vals.join(', ')}]`])}
+    if(s.wc!==null){const {tile,row,vals,beat}=s.wc,it=Math.floor(tile/cols),jt=tile%cols,j0=jt*n+beat*perWord;
+      for(let x=0;x<perWord;x++){s.C[it*n+row][j0+x]=vals[beat*perWord+x];ev.wcells.push([it*n+row,j0+x])}
+      ev.wc='write';ev.story.push(['write_c',`escreve um beat de 64 bits na porta C: C[${it*n+row}][${j0}..${j0+perWord-1}] = ${vals.slice(beat*perWord,beat*perWord+perWord).join(', ')} (beat ${beat+1} de ${beats} desta linha)`]);
+      s.cnt.beats++;s.wc.beat++;if(s.wc.beat===beats)s.wc=null}
+    // compute
+    if(s.drain<n&&s.sc.length<2*n){s.sc.push({tile:s.shadowTile,row:s.drain,vals:s.shadow[s.drain].slice()});ev.story.push(['compute',`(1) drena a linha ${s.drain} do sombra (tile ${s.shadowTile}) para s_c`]);s.drain++}
+    if(s.tile<NT){
+      const it=Math.floor(s.tile/cols),jt=s.tile%cols;let go=true,wa=null,wb=null;
+      if(s.t<M){if(s.sa.length&&s.sb.length){wa=s.sa.shift();wb=s.sb.shift()}else go=false}
+      if(go){
+        ev.active=true;ev.step=s.t;
+        const ca=wa?wa.vals:Array(n).fill(0),cb=wb?wb.vals:Array(n).fill(0);
+        if(wa){ev.pop={k:wa.k,ca,cb};ev.story.push(['compute',`(2) passo t = ${s.t}: tira a palavra k = ${wa.k} de s_a → bytes [${ca.join(', ')}] e de s_b → bytes [${cb.join(', ')}]`])}
+        else ev.story.push(['compute',`(2) passo t = ${s.t}: esvaziamento, entram zeros (os dados ainda atravessam o array)`]);
+        // skew (shell.cpp SKEW loop)
+        const skewTxt=[];
+        for(let i=0;i<n;i++){
+          if(i===0){s.inA[0]=ca[0];s.inB[0]=cb[0]}
+          else{s.inA[i]=s.dA[i][i-1];s.inB[i]=s.dB[i][i-1];for(let d=i-1;d>0;d--){s.dA[i][d]=s.dA[i][d-1];s.dB[i][d]=s.dB[i][d-1]}s.dA[i][0]=ca[i];s.dB[i][0]=cb[i]}
+        }
+        ev.story.push(['compute',`(3) skew: in_mtx_a_li = [${s.inA.join(', ')}] (byte 0 direto; byte i sai de dA[i][${n>2?'i−1':'0'}], que guardou o byte de ${n>2?'i':'1'} ciclo(s) atrás) e in_mtx_b_tw = [${s.inB.join(', ')}]`]);
+        // sa_compute
+        const prev=s.pe.map(r=>r.map(p=>({ri:p.ri,bw:p.bw})));
+        const macs=[];
+        for(let i=0;i<n;i++)for(let j=0;j<n;j++){const p=s.pe[i][j];p.li=j===0?s.inA[i]:prev[i][j-1].ri;p.tw=i===0?s.inB[j]:prev[i-1][j].bw;p.ri=p.li;p.bw=p.tw;if(p.li*p.tw!==0)macs.push(`pe[${i}][${j}]: ${p.li}·${p.tw}`);p.ba+=p.li*p.tw}
+        ev.story.push(['compute',`(4) sa_compute: ${macs.length?macs.join('; ')+' somados aos acumuladores':'nenhum produto diferente de zero neste ciclo'}; cada PE copia li→ri e tw→bw para o vizinho ler no próximo ciclo`]);
+        s.cnt.steps++;
+        if(s.t===T-1){s.shadow=s.pe.map(r=>r.map(p=>p.ba));s.shadowTile=s.tile;s.drain=0;s.pe.forEach(r=>r.forEach(p=>{p.ba=0;p.li=0;p.tw=0;p.ri=0;p.bw=0}));s.dA.forEach(r=>r.fill(0));s.dB.forEach(r=>r.fill(0));s.inA.fill(0);s.inB.fill(0);
+          ev.story.push(['compute',`(5) último passo do tile ${s.tile} (T = ${T}): os ${n*n} acumuladores vão para o sombra em um ciclo e o array é zerado; o tile ${s.tile+1<NT?s.tile+1:'(nenhum)'} começa no próximo ciclo`]);s.tile++;s.t=0}
+        else s.t++;
+      }else{ev.story.push(['compute',`espera: ${!s.sa.length?'s_a':'s_b'} está vazia (passo t = ${s.t} do tile ${s.tile})`]);s.cnt.stalls++;ev.ck='stall'}
+      if(go)ev.ck=s.t===0&&ev.step===T-1?'d':(ev.step<M?'d':'f');
+    }
+    // read_a
+    if(s.ra.row<rows){
+      if(s.sa.length<depth){
+        if(s.ra.phase==='first'){
+          if(s.ra.lat>0){s.ra.lat--;ev.ra='lat';ev.story.push(['read_a',`pediu o burst da linha de tiles ${s.ra.row} na porta A; esperando o primeiro dado (${s.ra.lat+1} ciclos)`])}
+          else{const w=s.ra.w,vals=Array.from({length:n},(_,i)=>A[s.ra.row*n+i][w]);s.abuf[w]=true;s.sa.push({k:w,vals});ev.pushA=w;ev.ra='mem';s.cnt.aMem++;
+            ev.story.push(['read_a',`lê a palavra k = ${w} da linha de tiles ${s.ra.row} na porta A = bytes [${vals.join(', ')}] (A[${s.ra.row*n}..${s.ra.row*n+n-1}][${w}]); põe em s_a e guarda em a_buf[${w}]`]);
+            s.ra.w++;if(s.ra.w===M){if(cols>1){s.ra.phase='replay';s.ra.rep=0;s.ra.w=0}else nextRow()}}
+        }else{const w=s.ra.w,vals=Array.from({length:n},(_,i)=>A[s.ra.row*n+i][w]);s.sa.push({k:w,vals});ev.pushA=w;ev.ra='rep';s.cnt.aRep++;
+          ev.story.push(['read_a',`repete a_buf[${w}] = [${vals.join(', ')}] para s_a (tile de coluna ${Math.floor(s.ra.rep/M)+1} da mesma linha de tiles; sem acesso à memória)`]);
+          s.ra.w=(s.ra.w+1)%M;s.ra.rep++;if(s.ra.rep===(cols-1)*M)nextRow()}
+      }else{ev.ra='full';ev.story.push(['read_a','s_a está cheia; espera'])}
+    }
+    function nextRow(){s.ra.row++;s.ra.phase='first';s.ra.w=0;s.ra.lat=lat;s.abuf.fill(false)}
+    // read_b
+    if(s.rb.row<rows){
+      if(s.sb.length<depth){
+        if(s.rb.lat>0){s.rb.lat--;ev.rb='lat';ev.story.push(['read_b',`pediu o burst de B para a linha de tiles ${s.rb.row}; esperando (${s.rb.lat+1} ciclos)`])}
+        else{const jt=Math.floor(s.rb.n/M),k=s.rb.n%M,vals=Array.from({length:n},(_,j)=>B[k][jt*n+j]);s.sb.push({k,vals,jt});ev.pushB=[jt,k];ev.rb='mem';s.cnt.bMem++;
+          ev.story.push(['read_b',`lê a palavra k = ${k} do tile de coluna ${jt} na porta B = bytes [${vals.join(', ')}] (B[${k}][${jt*n}..${jt*n+n-1}]); põe em s_b`]);
+          s.rb.n++;if(s.rb.n===cols*M){s.rb.n=0;s.rb.row++;s.rb.lat=lat}}
+      }else{ev.rb='full';ev.story.push(['read_b','s_b está cheia; espera'])}
+    }
+    trace.push({ev,sa:s.sa.map(x=>({k:x.k,vals:x.vals})),sb:s.sb.map(x=>({k:x.k,vals:x.vals,jt:x.jt})),sc:s.sc.map(x=>`t${x.tile} l${x.row}`),abuf:s.abuf.slice(),
+      pe:s.pe.map(r=>r.map(p=>({...p}))),dA:s.dA.map(r=>r.slice()),dB:s.dB.map(r=>r.slice()),inA:s.inA.slice(),inB:s.inB.slice(),
+      shadow:s.shadow?s.shadow.map(r=>r.slice()):null,shadowTile:s.shadowTile,drain:s.drain,C:s.C.map(r=>r.slice()),tile:Math.min(s.tile,NT-1),t:s.t,cnt:{...s.cnt},ra:{...s.ra},rb:{...s.rb}});
+    if(s.tile===NT&&s.drain===n&&!s.sc.length&&s.wc===null)break;
+  }
+  let ok=true;for(let i=0;i<P;i++)for(let j=0;j<Q;j++){let v=0;for(let k=0;k<M;k++)v+=A[i][k]*B[k][j];if(s.C[i][j]!==v)ok=false}
+  cfg.ok=ok;cur=0;gantt();show();
+}
+const word=(cls,k,vals,extra='',on=[])=>`<span class="word ${cls} ${extra}"><span class="k">k=${k}</span>${vals.map((v,i)=>`<span class="byte ${on.includes(i)?'on':''}">${v}</span>`).join('')}</span>`;
+function show(){
+  const f=trace[cur],ev=f.ev,{n,P,M,Q,A,B,rows,cols,NT,T,depth}=cfg;
+  $('cyc').textContent=`ciclo ${cur+1} / ${trace.length}`;
+  // memory A: tile rows
+  let h='';for(let r=0;r<rows;r++){h+=`<div><span class="st">linha de tiles ${r} (A[${r*n}..${r*n+n-1}][·]):</span><br>`;for(let k=0;k<M;k++){const vals=Array.from({length:n},(_,i)=>A[r*n+i][k]);h+=word('A',k,vals,(ev.pushA===k&&f.ra.row===r&&ev.ra==='mem')?'now':'')}h+='</div>'}
+  $('memA').innerHTML=h;
+  h='';for(let jt=0;jt<cols;jt++){h+=`<div><span class="st">tile de coluna ${jt} (B[·][${jt*n}..${jt*n+n-1}]):</span><br>`;for(let k=0;k<M;k++){const vals=Array.from({length:n},(_,j)=>B[k][jt*n+j]);h+=word('B',k,vals,(ev.pushB&&ev.pushB[0]===jt&&ev.pushB[1]===k)?'now':'')}h+='</div>'}
+  $('memB').innerHTML=h;
+  const fifo=(items,cls)=>Array.from({length:depth},(_,i)=>i<items.length?word(cls+' F',items[i].k,items[i].vals,i===0&&ev.pop?'now':''):`<span class="word empty"><span class="k">vazio</span></span>`).join('')+`<div class="st">${items.length}/${depth} ocupado; o compute tira sempre o primeiro da esquerda</div>`;
+  $('fifoA').innerHTML=fifo(f.sa,'A');$('fifoB').innerHTML=fifo(f.sb,'B');
+  const skew=(d,inp,name,regn,cls)=>{let o='';for(let i=0;i<n;i++){o+=`<div class="path"><span class="st" style="min-width:5ch">byte ${i}</span>`;
+    if(i===0)o+=`<span class="arrow">→</span><span class="st">sem atraso</span>`;else for(let x=i-1;x>=0;x--)o+=`<span class="arrow">→</span><span class="reg skew ${d[i][x]===0?'zero':''}"><span class="n">${regn}[${i}][${x}]=</span>${d[i][x]}</span>`;
+    o+=`<span class="arrow">→</span><span class="reg ${cls} ${inp[i]===0?'zero':''}"><span class="n">${name}[${i}]=</span>${inp[i]}</span></div>`}return o};
+  $('skewA').innerHTML=skew(f.dA,f.inA,'in_mtx_a_li','dA','edgeA');$('skewB').innerHTML=skew(f.dB,f.inB,'in_mtx_b_tw','dB','edgeB');
+  h=`<div class="lane"><div class="rowA">`+Array.from({length:n},(_,i)=>`<span class="reg edgeA" style="margin-top:${i?0:0}px;height:52px;display:flex;align-items:center">li←${f.inA[i]}</span>`).join('')+`</div><div><div class="colB" style="grid-template-columns:repeat(${n},118px)">`+Array.from({length:n},(_,j)=>`<span class="reg edgeB" style="text-align:center">tw↓${f.inB[j]}</span>`).join('')+`</div><div class="pes" style="grid-template-columns:repeat(${n},118px)">`;
+  for(let i=0;i<n;i++)for(let j=0;j<n;j++){const p=f.pe[i][j];h+=`<div class="pe ${ev.active?'on':''}"><span class="t">pe[${i}][${j}]</span><br>li=${p.li} tw=${p.tw}<br><span class="t">ri=${p.ri} bw=${p.bw}</span><div class="ba">ba=${p.ba}</div></div>`}
+  h+='</div></div></div>';$('arr').innerHTML=h;
+  $('shadow').innerHTML=(f.shadow?f.shadow.map((r,i)=>`<span class="reg skew ${i<f.drain?'zero':''}">tile ${f.shadowTile} linha ${i}: [${r.join(', ')}]${i<f.drain?' ✓':''}</span>`).join(''):'<span class="st">sombra vazio</span>')+`<div class="st">s_c: ${f.sc.length?f.sc.join(', '):'vazia'} (${f.sc.length}/${2*n})</div>`;
+  $('wc').textContent=ev.wc==='write'?'escrevendo na porta C neste ciclo':'sem beat neste ciclo';
+  let m=`<div class="mat" style="grid-template-columns:repeat(${Q},auto)">`;for(let i=0;i<P;i++)for(let j=0;j<Q;j++){const v=f.C[i][j];const now=ev.wcells.some(c=>c[0]===i&&c[1]===j);m+=`<div class="cell ${now?'now':v!==null?'ok':''}" style="${(i%n===0||j%n===0)?'box-shadow:inset 0 0 0 1px var(--mut)':''}">${v===null?'':v}</div>`}
+  $('matC').innerHTML=m+'</div>';
+  const k=f.cnt;$('cnt').textContent=`tiles: ${rows}×${cols} = ${NT}; T = M + 2n − 2 = ${T} passos por tile\npalavras de A da memória: ${k.aMem}; repetidas do a_buf: ${k.aRep}\npalavras de B da memória: ${k.bMem} (B é relido ${rows}×)\npassos do array: ${k.steps}; esperas: ${k.stalls}\nbeats em C: ${k.beats}\nideal ${NT}×${T} = ${NT*T} ciclos; esta execução: ${trace.length}\nC = A·B no fim: ${cfg.ok?'bit-exato':'ERRO'}`;
+  $('story').innerHTML=ev.story.length?ev.story.map(([w,t])=>`<li><span class="who">${w}</span>: ${t}</li>`).join(''):'<li>nada</li>';
+  $('gantt').querySelectorAll('.cur').forEach(e=>e.style.left=(cur/trace.length*100)+'%');
+}
+function gantt(){
+  const col={ra:{mem:'var(--a)',rep:'var(--a2)',lat:'#9a9a9a',full:'#d9d9d9',idle:'transparent'},rb:{mem:'var(--b)',lat:'#9a9a9a',full:'#d9d9d9',idle:'transparent'},ck:{d:'#f0a35e',f:'var(--a2)',stall:'#d9d9d9',idle:'transparent'},wc:{write:'var(--f)',idle:'transparent'}};
+  let h='';for(const [nm,key] of [['porta A','ra'],['porta B','rb'],['array','ck'],['porta C','wc']]){h+=`<div class="ln"><div class="n">${nm}</div><div class="b">`;let st=0,prev=null;const segs=[];
+    trace.forEach((f,i)=>{const c=f.ev[key];if(c!==prev){if(prev!==null)segs.push([st,i,prev]);st=i;prev=c}});segs.push([st,trace.length,prev]);
+    for(const [a,b,c] of segs)h+=`<div class="s" style="width:${(b-a)/trace.length*100}%;background:${col[key][c]||'transparent'}"></div>`;h+='<div class="cur"></div></div></div>'}
+  $('gantt').innerHTML=h;
+}
+function go(i){cur=Math.max(0,Math.min(trace.length-1,i));show()}
+$('reset').onclick=build;$('first').onclick=()=>go(0);$('last').onclick=()=>go(trace.length-1);$('back').onclick=()=>go(cur-1);$('fwd').onclick=()=>go(cur+1);
+document.addEventListener('keydown',e=>{if(['INPUT','SELECT'].includes(e.target.tagName))return;if(e.key==='ArrowRight'){go(cur+1);e.preventDefault()}if(e.key==='ArrowLeft'){go(cur-1);e.preventDefault()}});
+build();
+})();
+</script>
+
+</body></html>

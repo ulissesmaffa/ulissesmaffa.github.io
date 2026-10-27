@@ -1,0 +1,272 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>URSA v3 Cycle Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a control bar on top, then a 3-column "board": memory (A, B, C) | shell (processes, FIFOs, array) | log; Gantt across the bottom. */
+:root{
+  --bg:#f7f6f2; --fg:#17201d; --mut:#5c6661; --line:#d6d9d2; --panel:#ffffff;
+  --a:#d9611f; --a-soft:#fbe3d3; --b:#2a6fc4; --b-soft:#d7e5f8; --c:#1f9a6e; --c-soft:#d2f0e2;
+  --f:#7b63c2; --f-soft:#e5ddf6; --busy:#f0a35e; --hl:#ffe9a8; --ink:#17201d;
+  --sans:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#15191a; --fg:#e7eae6; --mut:#9aa39e; --line:#2d3432; --panel:#1d2324;
+  --a:#f08a4b; --a-soft:#4a2d1c; --b:#6fa6ea; --b-soft:#1f3350; --c:#4dc593; --c-soft:#1b3b2e;
+  --f:#a995e6; --f-soft:#2f2846; --busy:#c17a3a; --hl:#5a4a16; --ink:#e7eae6; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#15191a; --fg:#e7eae6; --mut:#9aa39e; --line:#2d3432; --panel:#1d2324;
+  --a:#f08a4b; --a-soft:#4a2d1c; --b:#6fa6ea; --b-soft:#1f3350; --c:#4dc593; --c-soft:#1b3b2e;
+  --f:#a995e6; --f-soft:#2f2846; --busy:#c17a3a; --hl:#5a4a16; --ink:#e7eae6; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:13px;line-height:1.4;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px}
+h1{font-size:18px;font-weight:600;margin:0 0 2px}
+.sub{color:var(--mut);margin:0 0 10px;max-width:70ch}
+.bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.bar label{display:flex;gap:4px;align-items:center;color:var(--mut);font-size:12px}
+.bar input,.bar select{font:inherit;width:52px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg)}
+.bar select{width:auto}
+button{font:inherit;font-weight:500;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg);cursor:pointer}
+button:hover{border-color:var(--mut)} button:focus-visible{outline:2px solid var(--b);outline-offset:1px}
+button.primary{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.cyc{font-family:var(--mono);font-size:15px;font-weight:500;min-width:11ch}
+.board{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1.5fr) minmax(0,1fr);gap:12px;margin-top:12px}
+@media (max-width:980px){.board{grid-template-columns:1fr}}
+.panel{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:10px;min-width:0}
+.panel h2{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:0 0 6px;font-weight:600}
+.panel h3{font-size:12px;margin:10px 0 4px;font-weight:600}
+.mat{display:inline-grid;gap:1px;background:var(--line);border:1px solid var(--line);font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums}
+.mat .cell{background:var(--panel);min-width:22px;height:20px;display:flex;align-items:center;justify-content:center}
+.mat .tb{box-shadow:inset 0 0 0 1px var(--mut)}
+.cell.ra{background:var(--a)!important;color:#fff} .cell.ea{background:var(--a-soft)!important}
+.cell.rb{background:var(--b)!important;color:#fff} .cell.eb{background:var(--b-soft)!important}
+.cell.wc{background:var(--c-soft)!important} .cell.wn{background:var(--c)!important;color:#fff}
+.scroll{overflow-x:auto}
+.proc{border-left:3px solid var(--c);padding:6px 8px;margin:6px 0;background:var(--bg);border-radius:0 6px 6px 0}
+.proc .name{font-weight:600;font-family:var(--mono);font-size:12px}
+.proc .st{color:var(--fg);margin-top:2px} .proc .st.idle{color:var(--mut)}
+.fifo{display:flex;gap:3px;align-items:center;flex-wrap:wrap;margin:4px 0}
+.fifo>span:not(.lab){display:flex;gap:3px;align-items:center;flex-wrap:wrap}
+.fifo .slot{width:30px;height:18px;border:1px solid var(--f);border-radius:3px;font-family:var(--mono);font-size:10px;display:inline-flex;align-items:center;justify-content:center;background:var(--panel)}
+.fifo .slot.full{background:var(--f-soft)} .fifo .lab{font-family:var(--mono);font-size:11px;min-width:3ch}
+.abuf{display:flex;gap:2px;flex-wrap:wrap} .abuf .w{width:16px;height:14px;border:1px solid var(--a);border-radius:2px;background:var(--panel)} .abuf .w.on{background:var(--a-soft)}
+.arr{display:inline-grid;gap:4px;margin:4px 0}
+.pe{width:70px;height:48px;border:1px solid var(--line);border-radius:5px;background:var(--panel);font-family:var(--mono);font-size:10px;padding:3px 5px;display:flex;flex-direction:column;justify-content:space-between}
+.pe.act{border-color:var(--a);background:var(--a-soft)} .pe .acc{font-size:13px;font-weight:500;text-align:right} .pe .io{color:var(--mut);display:flex;justify-content:space-between}
+.edge{display:flex;gap:4px;font-family:var(--mono);font-size:10px;color:var(--mut)}
+.shadow{display:flex;gap:4px;flex-wrap:wrap} .shadow .row{border:1px solid var(--f);border-radius:4px;padding:2px 5px;font-family:var(--mono);font-size:10px;background:var(--panel)} .shadow .row.on{background:var(--f-soft)}
+.log{font-family:var(--mono);font-size:11px;white-space:pre-wrap;margin:0;max-height:360px;overflow:auto}
+.log .now{background:var(--hl);display:block;padding:2px 4px;border-radius:3px}
+.gantt{margin-top:12px}
+.lane{display:grid;grid-template-columns:70px 1fr;gap:6px;align-items:center;margin:3px 0}
+.lane .n{font-family:var(--mono);font-size:11px;text-align:right;color:var(--mut)}
+.lane .bar2{height:14px;display:flex;border:1px solid var(--line);border-radius:3px;overflow:hidden;position:relative}
+.lane .seg{height:100%;flex:none}
+.cur{position:absolute;top:0;bottom:0;width:2px;background:var(--fg)}
+.leg{display:flex;gap:12px;flex-wrap:wrap;color:var(--mut);font-size:11px;margin-top:6px}
+.leg i{display:inline-block;width:12px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:3px}
+kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:3px;padding:0 4px}
+.note{color:var(--mut);font-size:12px;max-width:80ch;margin-top:10px}
+</style>
+
+<h1>URSA v3 cycle simulator</h1>
+<p class="sub">The streaming shell, one clock cycle at a time: read_a, read_b, compute and write_c as four concurrent processes, the three FIFOs between them, the output-stationary array with its real systolic timing, the shadow registers and the tile-major C. Step with the buttons or <kbd>→</kbd> <kbd>←</kbd>.</p>
+
+<div class="bar">
+  <label>n <select id="n"><option>2</option><option selected>4</option></select></label>
+  <label>P <input id="P" type="number" value="8" min="2" step="1"></label>
+  <label>M <input id="M" type="number" value="6" min="1" max="64"></label>
+  <label>Q <input id="Q" type="number" value="8" min="2" step="1"></label>
+  <label>FIFO depth <input id="depth" type="number" value="4" min="1" max="32"></label>
+  <label>burst latency <input id="lat" type="number" value="5" min="0" max="40"></label>
+  <label>seed <input id="seed" type="number" value="3" min="0"></label>
+  <button id="reset">Rebuild</button>
+  <span style="flex:1"></span>
+  <button id="first">⏮</button><button id="back">◀ cycle</button>
+  <span class="cyc" id="cyc">cycle 0 / 0</span>
+  <button id="fwd" class="primary">cycle ▶</button><button id="tile">tile ▶▶</button><button id="last">⏭</button>
+  <button id="play">play</button>
+</div>
+
+<div class="board">
+  <div class="panel" id="mem">
+    <h2>Memory windows (as the IP sees them)</h2>
+    <h3>A (weights), P × M, tile-major words</h3><div class="scroll" id="matA"></div>
+    <h3>B (im2col), M × Q</h3><div class="scroll" id="matB"></div>
+    <h3>C (int32), P × Q, tile-major, written by write_c</h3><div class="scroll" id="matC"></div>
+    <div class="leg"><span><i style="background:var(--a)"></i>read from port A this cycle</span><span><i style="background:var(--a-soft)"></i>at the array edge now (with skew)</span><span><i style="background:var(--b)"></i>read from port B</span><span><i style="background:var(--b-soft)"></i>at the edge now</span><span><i style="background:var(--c)"></i>written this cycle</span></div>
+  </div>
+
+  <div class="panel" id="shell">
+    <h2>Shell: four DATAFLOW processes</h2>
+    <div class="proc"><div class="name">read_a</div><div class="st" id="st-ra"></div>
+      <div style="margin-top:4px;color:var(--mut);font-size:11px">a_buf (LUTRAM, one tile row of A, M words)</div><div class="abuf" id="abuf"></div></div>
+    <div class="fifo"><span class="lab">s_a</span><span id="f-sa"></span></div>
+    <div class="proc"><div class="name">read_b</div><div class="st" id="st-rb"></div></div>
+    <div class="fifo"><span class="lab">s_b</span><span id="f-sb"></span></div>
+    <div class="proc"><div class="name">compute</div><div class="st" id="st-ck"></div>
+      <div class="edge" id="edge"></div>
+      <div class="scroll"><div class="arr" id="arr"></div></div>
+      <div style="color:var(--mut);font-size:11px">each PE: <span style="font-family:var(--mono)">a→ b↓ acc</span>; a leaves to the right, b downward, one PE per cycle</div>
+      <div style="margin-top:4px;color:var(--mut);font-size:11px">shadow registers (copied in one cycle at the last step of a tile)</div><div class="shadow" id="shadow"></div></div>
+    <div class="fifo"><span class="lab">s_c</span><span id="f-sc"></span></div>
+    <div class="proc"><div class="name">write_c</div><div class="st" id="st-wc"></div></div>
+  </div>
+
+  <div class="panel">
+    <h2>This cycle</h2>
+    <pre class="log" id="log"></pre>
+    <h2 style="margin-top:10px">Counters</h2>
+    <pre class="log" id="cnt"></pre>
+  </div>
+</div>
+
+<div class="panel gantt">
+  <h2>Schedule</h2>
+  <div id="gantt"></div>
+  <div class="leg"><span><i style="background:var(--a)"></i>A from memory</span><span><i style="background:var(--a-soft)"></i>A replayed from a_buf</span><span><i style="background:var(--b)"></i>B from memory</span><span><i style="background:#9a9a9a"></i>burst latency</span><span><i style="background:#d9d9d9"></i>FIFO full / stall</span><span><i style="background:var(--busy)"></i>array step with data</span><span><i style="background:var(--a-soft)"></i>flush (zeros)</span><span><i style="background:var(--f)"></i>C port writing</span></div>
+</div>
+<p class="note">Model: one word per cycle on each port after a burst starts; the FIFO depth and the burst latency are the two knobs that are not in the IP (the IP has depth 32, and the latency depends on the memory mapping). Values of A are int8 in −2..2, values of B are uint8 in 0..3, so every number fits on screen; C is checked against A·B at the end of the run. The array is simulated PE by PE: operand a travels right and b travels down one PE per cycle, and the skew shift registers of compute delay row i by i cycles and column j by j cycles, exactly as in shell.cpp.</p>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+let cfg, trace=[], cur=0, timer=null;
+
+function rng(seed){let s=seed>>>0||1;return()=>{s^=s<<13;s>>>=0;s^=s>>>17;s^=s<<5;s>>>=0;return s/4294967296}}
+
+function build(){
+  const n=+$('n').value, depth=+$('depth').value, lat=+$('lat').value, seed=+$('seed').value;
+  const P=Math.max(n,Math.ceil(+$('P').value/n)*n), Q=Math.max(n,Math.ceil(+$('Q').value/n)*n), M=Math.max(1,Math.min(64,+$('M').value));
+  $('P').value=P;$('Q').value=Q;$('M').value=M;
+  const r=rng(seed+1);
+  const A=Array.from({length:P},()=>Array.from({length:M},()=>Math.floor(r()*5)-2));
+  const B=Array.from({length:M},()=>Array.from({length:Q},()=>Math.floor(r()*4)));
+  const rows=P/n, cols=Q/n, NT=rows*cols, T=M+2*n-2, beats=Math.max(1,n/2), perWord=Math.min(n,2);
+  cfg={n,P,M,Q,depth,lat,A,B,rows,cols,NT,T,beats,perWord};
+  // ---- state
+  const s={sa:[],sb:[],sc:[],ra:{row:0,w:0,phase:'first',rep:0,lat:lat},abuf:Array(M).fill(false),
+    rb:{row:0,n:0,lat:lat},tile:0,t:0,
+    pe:Array.from({length:n},()=>Array.from({length:n},()=>({a:0,b:0,acc:0}))),
+    dA:Array.from({length:n},()=>Array(n).fill(0)),dB:Array.from({length:n},()=>Array(n).fill(0)),
+    shadow:null,shadowTile:-1,drain:n,wc:null,C:Array.from({length:P},()=>Array(Q).fill(null)),
+    cnt:{aMem:0,aRep:0,bMem:0,steps:0,stalls:0,beats:0,calls:1}};
+  trace=[];
+  let guard=0;
+  while(guard++<20000){
+    const ev={ra:'idle',rb:'idle',ck:'idle',wc:'idle',log:[],da:[],db:[],ea:[],eb:[],wcells:[],edgeA:Array(n).fill(0),edgeB:Array(n).fill(0),active:false};
+    // ---------------- write_c: one beat per cycle
+    if(s.wc===null&&s.sc.length){const r=s.sc.shift();s.wc={tile:r.tile,row:r.row,vals:r.vals,beat:0};ev.log.push(`write_c: takes row ${r.row} of tile ${r.tile} from s_c`)}
+    if(s.wc!==null){
+      const {tile,row,vals,beat}=s.wc, it=Math.floor(tile/cols), jt=tile%cols;
+      const j0=jt*n+beat*perWord;
+      for(let x=0;x<perWord;x++){s.C[it*n+row][j0+x]=vals[beat*perWord+x];ev.wcells.push([it*n+row,j0+x])}
+      ev.wc=`tile ${tile}, row ${row}, beat ${beat+1}/${beats}`;ev.log.push(`write_c: beat on port C → C[${it*n+row}][${j0}..${j0+perWord-1}] = ${vals.slice(beat*perWord,beat*perWord+perWord).join(', ')}`);
+      s.cnt.beats++;s.wc.beat++;if(s.wc.beat===beats)s.wc=null;
+    }
+    // ---------------- compute
+    if(s.drain<n&&s.sc.length<2*n){s.sc.push({tile:s.shadowTile,row:s.drain,vals:s.shadow[s.drain].slice()});ev.log.push(`compute: shadow row ${s.drain} of tile ${s.shadowTile} → s_c`);s.drain++}
+    if(s.tile<NT){
+      const it=Math.floor(s.tile/cols), jt=s.tile%cols;
+      let go=true, wa=null, wb=null;
+      if(s.t<M){ if(s.sa.length&&s.sb.length){wa=s.sa.shift();wb=s.sb.shift()} else go=false }
+      if(go){
+        ev.active=true;
+        // skew: shift registers. new word enters position 0; row i takes position i-1 (delay i)
+        const colA=wa!==null?wa.vals:Array(n).fill(0), rowB=wb!==null?wb.vals:Array(n).fill(0);
+        for(let i=0;i<n;i++){ if(i===0){ev.edgeA[0]=colA[0];ev.edgeB[0]=rowB[0]} else {ev.edgeA[i]=s.dA[i][i-1];ev.edgeB[i]=s.dB[i][i-1];for(let d=i-1;d>0;d--){s.dA[i][d]=s.dA[i][d-1];s.dB[i][d]=s.dB[i][d-1]} s.dA[i][0]=colA[i];s.dB[i][0]=rowB[i]} }
+        if(wa!==null){ev.ea.push([it*n+0,wa.k]);ev.eb.push([wb.k,jt*n+0])}
+        for(let i=1;i<n;i++){const k=s.t-i;if(k>=0&&k<M){ev.ea.push([it*n+i,k]);ev.eb.push([k,jt*n+i])}}
+        // one cycle of the array: PE(i,j) takes a from the left neighbour's register, b from the one above
+        const prev=s.pe.map(r=>r.map(p=>({a:p.a,b:p.b})));
+        for(let i=0;i<n;i++)for(let j=0;j<n;j++){const a=j===0?ev.edgeA[i]:prev[i][j-1].a;const b=i===0?ev.edgeB[j]:prev[i-1][j].b;s.pe[i][j].acc+=a*b;s.pe[i][j].a=a;s.pe[i][j].b=b}
+        ev.ck=s.t<M?`tile ${s.tile}, step t = ${s.t} (k = ${s.t} enters row 0 / column 0)`:`tile ${s.tile}, step t = ${s.t}: flush, zeros enter`;
+        ev.log.push(`compute: ${s.t<M?`pops k = ${wa.k} from s_a and s_b, `:'no pop (flush), '}array step ${s.t+1}/${T}`);
+        s.cnt.steps++;
+        if(s.t===T-1){s.shadow=s.pe.map(r=>r.map(p=>p.acc));s.shadowTile=s.tile;s.drain=0;s.pe.forEach(r=>r.forEach(p=>{p.acc=0;p.a=0;p.b=0}));s.dA.forEach(r=>r.fill(0));s.dB.forEach(r=>r.fill(0));ev.log.push(`compute: last step of tile ${s.tile}: accumulators → shadow in one cycle, array cleared, tile ${s.tile+1} starts next cycle`);s.tile++;s.t=0}
+        else s.t++;
+      } else {ev.ck=`tile ${s.tile}, step t = ${s.t}: stall, ${!s.sa.length?'s_a':'s_b'} empty`;ev.log.push('compute: stalls, waiting for the FIFOs');s.cnt.stalls++}
+    }
+    // ---------------- read_a
+    if(s.ra.row<rows){
+      if(s.sa.length<depth){
+        if(s.ra.phase==='first'){
+          if(s.ra.lat>0){s.ra.lat--;ev.ra='lat';ev.log.push(`read_a: burst of tile row ${s.ra.row} requested on port A, waiting (latency ${s.ra.lat+1} left)`)}
+          else{const w=s.ra.w;const vals=Array.from({length:n},(_,i)=>A[s.ra.row*n+i][w]);s.abuf[w]=true;s.sa.push({k:w,vals});for(let i=0;i<n;i++)ev.da.push([s.ra.row*n+i,w]);ev.ra='mem';ev.log.push(`read_a: word k = ${w} of tile row ${s.ra.row} from port A → s_a, copy kept in a_buf[${w}]`);s.cnt.aMem++;s.ra.w++;if(s.ra.w===M){if(cols>1){s.ra.phase='replay';s.ra.rep=0;s.ra.w=0}else nextRow()}}
+        } else {s.sa.push({k:s.ra.w,vals:Array.from({length:n},(_,i)=>A[s.ra.row*n+i][s.ra.w])});ev.ra='rep';ev.log.push(`read_a: a_buf[${s.ra.w}] → s_a (replay for column tile ${Math.floor(s.ra.rep/M)+1}, no port traffic)`);s.cnt.aRep++;s.ra.w=(s.ra.w+1)%M;s.ra.rep++;if(s.ra.rep===(cols-1)*M)nextRow()}
+      } else {ev.ra='full';ev.log.push('read_a: s_a full, waits')}
+    }
+    function nextRow(){s.ra.row++;s.ra.phase='first';s.ra.w=0;s.ra.lat=lat;s.abuf.fill(false);if(s.ra.row<rows)ev.log.push(`read_a: tile row ${s.ra.row-1} done, a_buf will be overwritten by tile row ${s.ra.row}`)}
+    // ---------------- read_b
+    if(s.rb.row<rows){
+      if(s.sb.length<depth){
+        if(s.rb.lat>0){s.rb.lat--;ev.rb='lat';ev.log.push(`read_b: burst for tile row ${s.rb.row} requested on port B, waiting (latency ${s.rb.lat+1} left)`)}
+        else{const jt=Math.floor(s.rb.n/M), k=s.rb.n%M;const vals=Array.from({length:n},(_,j)=>B[k][jt*n+j]);s.sb.push({k,vals});for(let j=0;j<n;j++)ev.db.push([k,jt*n+j]);ev.rb='mem';ev.log.push(`read_b: word k = ${k} of column tile ${jt} (tile ${s.rb.row*cols+jt}) from port B → s_b`);s.cnt.bMem++;s.rb.n++;if(s.rb.n===cols*M){s.rb.n=0;s.rb.row++;s.rb.lat=lat;if(s.rb.row<rows)ev.log.push(`read_b: all of B streamed for tile row ${s.rb.row-1}; it will be streamed again for tile row ${s.rb.row}`)}}
+      } else {ev.rb='full';ev.log.push('read_b: s_b full, waits')}
+    }
+    // snapshot
+    trace.push({ev,sa:s.sa.map(x=>x.k),sb:s.sb.map(x=>x.k),sc:s.sc.map(x=>`${x.tile}.${x.row}`),abuf:s.abuf.slice(),
+      pe:s.pe.map(r=>r.map(p=>({...p}))),shadow:s.shadow?s.shadow.map(r=>r.slice()):null,shadowTile:s.shadowTile,drain:s.drain,
+      C:s.C.map(r=>r.slice()),tile:Math.min(s.tile,NT-1),t:s.t,cnt:{...s.cnt},ra:{...s.ra},rb:{...s.rb},wc:s.wc?{...s.wc}:null});
+    if(s.tile===NT&&s.drain===n&&!s.sc.length&&s.wc===null)break;
+  }
+  // check
+  let ok=true;for(let i=0;i<P;i++)for(let j=0;j<Q;j++){let v=0;for(let k=0;k<M;k++)v+=A[i][k]*B[k][j];if(s.C[i][j]!==v)ok=false}
+  cfg.ok=ok;cur=0;renderGantt();show();
+}
+
+function mat(mat,cls,rowsOfTiles,colsOfTiles,n,marks){
+  const R=mat.length,Cn=mat[0].length;let h=`<div class="mat" style="grid-template-columns:repeat(${Cn},auto)">`;
+  for(let i=0;i<R;i++)for(let j=0;j<Cn;j++){const v=mat[i][j];let c='cell';if((i%n===0)||(j%n===0))c+=' tb';const m=marks(i,j);if(m)c+=' '+m;h+=`<div class="${c}">${v===null?'':v}</div>`}
+  return h+'</div>';
+}
+function has(list,i,j){return list.some(p=>p[0]===i&&p[1]===j)}
+function show(){
+  const f=trace[cur], ev=f.ev, {n,P,M,Q,A,B,rows,cols,NT,T,depth}=cfg;
+  $('cyc').textContent=`cycle ${cur+1} / ${trace.length}`;
+  $('matA').innerHTML=mat(A,'a',rows,M,n,(i,j)=>has(ev.da,i,j)?'ra':has(ev.ea,i,j)?'ea':'');
+  $('matB').innerHTML=mat(B,'b',M,cols,n,(i,j)=>has(ev.db,i,j)?'rb':has(ev.eb,i,j)?'eb':'');
+  $('matC').innerHTML=mat(f.C,'c',rows,cols,n,(i,j)=>has(ev.wcells,i,j)?'wn':f.C[i][j]!==null?'wc':'');
+  const st=(id,txt,idle)=>{const e=$(id);e.textContent=txt;e.className='st'+(idle?' idle':'')};
+  const raTxt={lat:'waiting for the burst (latency)',mem:`reading tile row ${f.ra.row} from port A: word k = ${(f.ra.w+M-1)%M}, kept in a_buf`,rep:`replaying a_buf for column tile ${Math.min(cols-1,Math.floor((f.ra.rep-1)/M)+1)} of tile row ${f.ra.row}`,full:'s_a is full, waiting',idle:'done: every tile row of A was read once'}[ev.ra];
+  st('st-ra',raTxt,ev.ra==='idle');
+  const rbTxt={lat:'waiting for the burst (latency)',mem:`streaming B for tile row ${f.rb.row}: tile ${f.rb.row*cols+Math.floor(((f.rb.n-1+cols*M)%(cols*M))/M)}, word k = ${(f.rb.n-1+M)%M}`,full:'s_b is full, waiting',idle:'done: B was streamed once per tile row'}[ev.rb];
+  st('st-rb',rbTxt,ev.rb==='idle');
+  st('st-ck',ev.ck==='idle'?'done: all tiles computed':ev.ck,ev.ck==='idle');
+  st('st-wc',ev.wc==='idle'?(f.wc?'between beats':'nothing to write'):`writing ${ev.wc} (two int32 per 64-bit beat)`,ev.wc==='idle');
+  $('abuf').innerHTML=f.abuf.map((on,w)=>`<div class="w ${on?'on':''}" title="a_buf[${w}]"></div>`).join('');
+  const fifo=(items,dep,fmt)=>Array.from({length:dep},(_,i)=>`<span class="slot ${i<items.length?'full':''}">${i<items.length?fmt(items[i]):''}</span>`).join('')+`<span class="lab" style="margin-left:6px;color:var(--mut)">${items.length}/${dep}</span>`;
+  $('f-sa').innerHTML=fifo(f.sa,depth,k=>'k'+k);$('f-sb').innerHTML=fifo(f.sb,depth,k=>'k'+k);$('f-sc').innerHTML=fifo(f.sc,2*n,x=>'t'+x);
+  $('edge').innerHTML=`<span>edge in this cycle: a per row [${ev.edgeA.join(', ')}], b per column [${ev.edgeB.join(', ')}]</span>`;
+  let h='';for(let i=0;i<n;i++)for(let j=0;j<n;j++){const p=f.pe[i][j];h+=`<div class="pe ${ev.active?'act':''}"><div class="io"><span>a ${p.a}</span><span>b ${p.b}</span></div><div class="acc">${p.acc}</div></div>`}
+  $('arr').innerHTML=h;$('arr').style.gridTemplateColumns=`repeat(${n},auto)`;
+  $('shadow').innerHTML=f.shadow?f.shadow.map((r,i)=>`<div class="row ${i>=f.drain?'on':''}">tile ${f.shadowTile} row ${i}: ${r.join(' ')}${i<f.drain?' ✓':''}</div>`).join(''):'<span style="color:var(--mut);font-size:11px">empty</span>';
+  const lines=[];for(let c=Math.max(0,cur-6);c<=cur;c++){const t=trace[c].ev.log.map(l=>`  ${l}`).join('\n');lines.push(c===cur?`<span class="now">cycle ${c+1}\n${t||'  (nothing)'}</span>`:`cycle ${c+1}\n${t}`)}
+  $('log').innerHTML=lines.join('\n');$('log').scrollTop=1e6;
+  const k=f.cnt;
+  $('cnt').textContent=`tiles: ${f.tile}${f.ev.ck==='idle'&&cur===trace.length-1?' (all '+NT+')':' of '+NT}, T = M + 2n − 2 = ${T}\nport A words from memory: ${k.aMem}   replayed from a_buf: ${k.aRep}\nport B words from memory: ${k.bMem}   (B is read ${rows}× )\narray steps done: ${k.steps}   stalls: ${k.stalls}\nport C beats: ${k.beats}   (n²/${cfg.perWord} = ${n*n/cfg.perWord} per tile)\nideal: ${NT} × ${T} = ${NT*T} cycles; this run: ${trace.length}\nC = A·B check at the end: ${cfg.ok?'bit-exact':'MISMATCH'}`;
+  $('gantt').querySelectorAll('.cur').forEach(e=>e.style.left=(cur/trace.length*100)+'%');
+}
+function renderGantt(){
+  const lanes=[['port A','ra',{mem:'var(--a)',rep:'var(--a-soft)',lat:'#9a9a9a',full:'#d9d9d9',idle:'transparent'}],['port B','rb',{mem:'var(--b)',lat:'#9a9a9a',full:'#d9d9d9',idle:'transparent'}],['array','ck',null],['port C','wc',null]];
+  let h='';for(const [name,key,col] of lanes){
+    h+=`<div class="lane"><div class="n">${name}</div><div class="bar2">`;
+    let start=0,prev=null;const segs=[];
+    const cls=e=>{if(key==='ck')return e.ck==='idle'?'t':e.ck.includes('stall')?'s':e.ck.includes('flush')?'f':'d';if(key==='wc')return e.wc==='idle'?'t':'w';return e[key]};
+    trace.forEach((f,i)=>{const c=cls(f.ev);if(c!==prev){if(prev!==null)segs.push([start,i,prev]);start=i;prev=c}});segs.push([start,trace.length,prev]);
+    for(const [a,b,c] of segs){let color=col?col[c]:({t:'transparent',s:'#d9d9d9',f:'var(--a-soft)',d:'var(--busy)',w:'var(--f)'})[c];h+=`<div class="seg" style="width:${(b-a)/trace.length*100}%;background:${color}"></div>`}
+    h+=`<div class="cur"></div></div></div>`;
+  }
+  $('gantt').innerHTML=h;
+}
+function go(i){cur=Math.max(0,Math.min(trace.length-1,i));show()}
+$('reset').onclick=build;$('first').onclick=()=>go(0);$('last').onclick=()=>go(trace.length-1);
+$('back').onclick=()=>go(cur-1);$('fwd').onclick=()=>go(cur+1);
+$('tile').onclick=()=>{const t0=trace[cur].tile;let i=cur+1;while(i<trace.length-1&&trace[i].tile===t0)i++;go(i)};
+$('play').onclick=()=>{if(timer){clearInterval(timer);timer=null;$('play').textContent='play';return}$('play').textContent='pause';timer=setInterval(()=>{if(cur>=trace.length-1){clearInterval(timer);timer=null;$('play').textContent='play';return}go(cur+1)},350)};
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return;if(e.key==='ArrowRight'){go(cur+1);e.preventDefault()}if(e.key==='ArrowLeft'){go(cur-1);e.preventDefault()}});
+build();
+})();
+</script>
+
+</body></html>
