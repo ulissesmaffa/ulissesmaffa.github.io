@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Alimentando a Borda do Array</title>
+<meta name="description" content="Alimentando a borda do array no URSA v3: filas, registradores de deslocamento e bordas, passo a passo.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Leiaute: barra de controle; depois um tabuleiro: cadeias de B em cima das colunas, cadeias de A à esquerda das linhas, PEs no canto; narrativa embaixo. */
+:root{--bg:#f7f6f2;--fg:#17201d;--mut:#5c6661;--line:#d6d9d2;--panel:#fff;
+ --a:#d9611f;--a2:#fbe3d3;--b:#2a6fc4;--b2:#d7e5f8;--f:#7b63c2;--f2:#e5ddf6;--hl:#ffe9a8;
+ --sans:"IBM Plex Sans",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15191a;--fg:#e7eae6;--mut:#9aa39e;--line:#2d3432;--panel:#1d2324;
+ --a:#f08a4b;--a2:#4a2d1c;--b:#6fa6ea;--b2:#1f3350;--f:#a995e6;--f2:#2f2846;--hl:#5a4a16;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#15191a;--fg:#e7eae6;--mut:#9aa39e;--line:#2d3432;--panel:#1d2324;
+ --a:#f08a4b;--a2:#4a2d1c;--b:#6fa6ea;--b2:#1f3350;--f:#a995e6;--f2:#2f2846;--hl:#5a4a16;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:13px;line-height:1.4;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px}
+h1{font-size:18px;margin:0 0 2px;font-weight:600}.sub{color:var(--mut);margin:0 0 10px;max-width:80ch}
+.bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.bar label{display:flex;gap:4px;align-items:center;color:var(--mut);font-size:12px}
+.bar select{font:inherit;padding:2px 4px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg)}
+button{font:inherit;font-weight:500;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg);cursor:pointer}
+button:hover{border-color:var(--mut)}button:focus-visible{outline:2px solid var(--b);outline-offset:1px}button.primary{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.cyc{font-family:var(--mono);font-size:15px;font-weight:500;min-width:12ch}
+.panel{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:10px;margin-top:12px;min-width:0}
+.panel h2{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:0 0 6px;font-weight:600}
+.board{overflow-x:auto}
+table.g{border-collapse:separate;border-spacing:6px}
+table.g td{vertical-align:middle;padding:0}
+.reg{display:inline-flex;align-items:center;justify-content:center;min-width:60px;height:26px;padding:0 6px;border:1px solid var(--line);border-radius:5px;font-family:var(--mono);font-size:11px;background:var(--panel)}
+.reg.z{color:var(--mut);opacity:.6}
+.reg.word{border-color:var(--f);background:var(--f2)}
+.reg.da{border-color:var(--a);background:var(--a2)} .reg.db{border-color:var(--b);background:var(--b2)}
+.reg.ea{border:2px solid var(--a);background:var(--a2);font-weight:600} .reg.eb{border:2px solid var(--b);background:var(--b2);font-weight:600}
+.reg.z.da,.reg.z.db,.reg.z.ea,.reg.z.eb,.reg.z.word{background:var(--panel)}
+.lbl{display:block;font-size:9.5px;color:var(--mut);text-align:center;margin-top:1px;font-family:var(--mono)}
+.chainA{display:flex;align-items:center;gap:4px;justify-content:flex-end}
+.chainB{display:flex;flex-direction:column;align-items:center;gap:4px;justify-content:flex-end}
+.arr{color:var(--mut);font-size:12px}
+.pe{width:168px;min-height:84px;border:1px solid var(--line);border-radius:6px;background:var(--panel);font-family:var(--mono);font-size:10.5px;padding:4px 6px;box-sizing:border-box;white-space:nowrap}
+.pe.on{border:2px solid var(--a);background:var(--a2)}
+.pe .t{color:var(--mut);font-size:9.5px}.pe .p{font-weight:600;margin-top:3px}.pe .q{color:var(--mut);margin-top:3px}
+.story{font-size:13px}.story li{margin:3px 0}.story .who{font-family:var(--mono);font-weight:500}
+.hd{font-size:12px;font-weight:600;margin:0 0 4px}.hdA{color:var(--a)}.hdB{color:var(--b)}
+.leg{display:flex;gap:12px;flex-wrap:wrap;color:var(--mut);font-size:11px;margin-top:8px}.leg i{display:inline-block;width:12px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:3px;border:1px solid var(--line)}
+kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:3px;padding:0 4px}
+.note{color:var(--mut);font-size:12px;max-width:85ch;margin-top:10px}
+</style>
+</head>
+<body>
+
+<h1>Alimentando a borda do array (URSA v3)</h1>
+<p class="sub">Um tile, passo a passo: a palavra tirada de <span style="font-family:var(--mono)">s_a</span> e de <span style="font-family:var(--mono)">s_b</span>, as cadeias de skew <span style="font-family:var(--mono)">dA[i][·]</span> e <span style="font-family:var(--mono)">dB[j][·]</span>, os registradores de borda <span style="font-family:var(--mono)">in_mtx_a_li[i]</span> e <span style="font-family:var(--mono)">in_mtx_b_tw[j]</span>, e o produto que cada PE faz. Rótulos simbólicos: <span style="font-family:var(--mono)">a[i][k]</span> é A[i][k], <span style="font-family:var(--mono)">b[k][j]</span> é B[k][j]. Avance com os botões ou <kbd>→</kbd> <kbd>←</kbd>.</p>
+
+<div class="bar">
+  <label>n <select id="n"><option>2</option><option selected>3</option><option>4</option></select></label>
+  <label>M <select id="M"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></label>
+  <button id="reset">Reconstruir</button>
+  <span style="flex:1"></span>
+  <button id="first">⏮</button><button id="back">◀ passo</button>
+  <span class="cyc" id="cyc"></span>
+  <button id="fwd" class="primary">passo ▶</button><button id="last">⏭</button>
+  <button id="play">play</button>
+</div>
+
+<div class="panel">
+  <h2>Tabuleiro</h2>
+  <div id="what" style="margin-bottom:6px;color:var(--mut)"></div>
+  <div class="board"><table class="g" id="board"></table></div>
+  <div class="leg"><span><i style="background:var(--f2);border-color:var(--f)"></i>byte da palavra tirada da fila neste passo</span><span><i style="background:var(--a2);border-color:var(--a)"></i>cadeia dA (a caminho da borda esquerda)</span><span><i style="background:var(--b2);border-color:var(--b)"></i>cadeia dB (a caminho da borda de cima)</span><span><i style="background:var(--a2);border:2px solid var(--a)"></i>registrador de borda</span><span>PE pintado = fez um produto útil neste passo</span></div>
+</div>
+
+<div class="panel">
+  <h2>O que aconteceu neste passo</h2>
+  <ol class="story" id="story"></ol>
+</div>
+<p class="note">Fiel ao laço SKEW do compute e ao sa_compute do v3: byte 0 da palavra vai direto para a borda 0; byte i entra em dA[i][0] e a borda i recebe dA[i][i−1], que guardou o byte de i passos atrás (cada cadeia desloca uma posição por passo). No array, pe[i][0] recebe li da borda esquerda e pe[0][j] recebe tw da borda de cima; os demais recebem li do ri do vizinho à esquerda e tw do bw do vizinho de cima; todos fazem ri = li, bw = tw, ba += li·tw. Depois de t = M − 1 entram zeros e as cadeias se esvaziam: o tile fecha em T = M + 2n − 2 passos. Ao fim, a página confere que cada pe[i][j] fez exatamente os produtos a[i][k]·b[k][j], k = 0..M−1, nessa ordem.</p>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+let n=3,M=3,T,frames=[],cur=0,timer=null;
+const lab=s=>s==='0'?'0':`${s[0]}[${s[1]}][${s[2]}]`;
+function build(){
+  n=+$('n').value;M=+$('M').value;T=M+2*n-2;frames=[];
+  const dA=Array.from({length:n},()=>Array(n).fill('0')),dB=Array.from({length:n},()=>Array(n).fill('0'));
+  const pe=Array.from({length:n},()=>Array.from({length:n},()=>({li:'0',tw:'0',ri:'0',bw:'0',acc:[]})));
+  for(let t=0;t<T;t++){
+    const ra=Array.from({length:n},(_,i)=>t<M?`a${i}${t}`:'0'),rb=Array.from({length:n},(_,j)=>t<M?`b${t}${j}`:'0');
+    const ina=Array(n).fill('0'),inb=Array(n).fill('0'),story=[];
+    story.push(t<M?['compute',`tira de s_a a palavra k = ${t} (coluna ${t} de A: ${ra.map(lab).join(', ')}) e de s_b a palavra k = ${t} (linha ${t} de B: ${rb.map(lab).join(', ')})`]:['compute',`t = ${t} ≥ M: não tira nada das filas; entram zeros nas cadeias (esvaziamento)`]);
+    const mv=[];
+    for(let i=0;i<n;i++){
+      if(i===0){ina[0]=ra[0];inb[0]=rb[0]}
+      else{ina[i]=dA[i][i-1];inb[i]=dB[i][i-1];for(let d=i-1;d>0;d--){dA[i][d]=dA[i][d-1];dB[i][d]=dB[i][d-1]}dA[i][0]=ra[i];dB[i][0]=rb[i];
+        if(ina[i]!=='0')mv.push(`in_mtx_a_li[${i}] recebe ${lab(ina[i])} (saiu de dA[${i}][${i-1}], entrou há ${i} passo${i>1?'s':''})`);
+        if(inb[i]!=='0')mv.push(`in_mtx_b_tw[${i}] recebe ${lab(inb[i])} (saiu de dB[${i}][${i-1}])`)}
+    }
+    story.push(['skew',`in_mtx_a_li[0] = ${lab(ina[0])} e in_mtx_b_tw[0] = ${lab(inb[0])} (byte 0, sem atraso)${mv.length?'; '+mv.join('; '):''}`]);
+    const prev=pe.map(r=>r.map(p=>({ri:p.ri,bw:p.bw})));const prods=[];
+    for(let i=0;i<n;i++)for(let j=0;j<n;j++){const p=pe[i][j];p.li=j===0?ina[i]:prev[i][j-1].ri;p.tw=i===0?inb[j]:prev[i-1][j].bw;p.ri=p.li;p.bw=p.tw;if(p.li!=='0'&&p.tw!=='0'){p.acc.push([p.li,p.tw]);prods.push(`pe[${i}][${j}]: ${lab(p.li)}·${lab(p.tw)}`)}}
+    story.push(['sa_compute',prods.length?`produtos úteis neste passo: ${prods.join('; ')}. Os outros PEs somam zero.`:'nenhum produto útil; só zeros atravessando o array.']);
+    if(t===T-1)story.push(['fim do tile',`T = ${T} passos. Todos os n² = ${n*n} acumuladores estão completos (M = ${M} produtos cada); agora vão para o sombra em um ciclo.`]);
+    frames.push({t,ra,rb,ina,inb,dA:dA.map(r=>r.slice()),dB:dB.map(r=>r.slice()),pe:pe.map(r=>r.map(p=>({li:p.li,tw:p.tw,acc:p.acc.slice()}))),story});
+  }
+  let ok=true;for(let i=0;i<n;i++)for(let j=0;j<n;j++){const a=pe[i][j].acc;if(a.length!==M)ok=false;a.forEach(([x,y],k)=>{if(x!==`a${i}${k}`||y!==`b${k}${j}`)ok=false})}
+  frames.ok=ok;cur=0;show();
+}
+function reg(v,cls,l){return `<div><span class="reg ${cls} ${v==='0'?'z':''}">${lab(v)}</span>${l?`<span class="lbl">${l}</span>`:''}</div>`}
+function show(){
+  const f=frames[cur];
+  $('cyc').textContent=`passo ${f.t} / ${T-1}`;
+  $('what').textContent=f.t<M?`tirando a coluna ${f.t} de A e a linha ${f.t} de B das filas`:`esvaziamento (t ≥ M): zeros entram, os últimos bytes atravessam`;
+  // table: header row with B chains per column; then rows with A chain + PEs
+  let h='<tr><td></td>';
+  for(let j=0;j<n;j++){
+    let col=`<div class="chainB">`+reg(f.rb[j],'word',`byte ${j} de rb`);
+    for(let d=0;d<j;d++)col+=`<span class="arr">↓</span>`+reg(f.dB[j][d],'db',`dB[${j}][${d}]`);
+    col+=`<span class="arr">↓</span>`+reg(f.inb[j],'eb',`in_mtx_b_tw[${j}]`)+`<span class="arr">↓</span></div>`;
+    h+=`<td style="text-align:center">${col}</td>`;
+  }
+  h+='</tr>';
+  for(let i=0;i<n;i++){
+    let row=`<div class="chainA">`+reg(f.ra[i],'word',`byte ${i} de ra`);
+    for(let d=0;d<i;d++)row+=`<span class="arr">→</span>`+reg(f.dA[i][d],'da',`dA[${i}][${d}]`);
+    row+=`<span class="arr">→</span>`+reg(f.ina[i],'ea',`in_mtx_a_li[${i}]`)+`<span class="arr">→</span></div>`;
+    h+=`<tr><td>${row}</td>`;
+    for(let j=0;j<n;j++){const p=f.pe[i][j];const on=p.li!=='0'&&p.tw!=='0';
+      h+=`<td><div class="pe ${on?'on':''}"><span class="t">pe[${i}][${j}]</span><br>li=${lab(p.li)} tw=${lab(p.tw)}<div class="${on?'p':'q'}">${on?`ba += ${lab(p.li)}·${lab(p.tw)}`:`ba += 0`}</div><div class="q">${p.acc.length}/${M} produtos feitos</div></div></td>`}
+    h+='</tr>';
+  }
+  $('board').innerHTML=h;
+  $('story').innerHTML=f.story.map(([w,t])=>`<li><span class="who">${w}</span>: ${t}</li>`).join('')+(cur===T-1?`<li><span class="who">conferência</span>: cada pe[i][j] fez a[i][0]·b[0][j] … a[i][${M-1}]·b[${M-1}][j], nessa ordem: ${frames.ok?'correto':'ERRO'}</li>`:'');
+}
+function go(i){cur=Math.max(0,Math.min(T-1,i));show()}
+$('reset').onclick=build;$('first').onclick=()=>go(0);$('last').onclick=()=>go(T-1);$('back').onclick=()=>go(cur-1);$('fwd').onclick=()=>go(cur+1);
+$('play').onclick=()=>{if(timer){clearInterval(timer);timer=null;$('play').textContent='play';return}$('play').textContent='pausa';timer=setInterval(()=>{if(cur>=T-1){clearInterval(timer);timer=null;$('play').textContent='play';return}go(cur+1)},1500)};
+document.addEventListener('keydown',e=>{if(e.target.tagName==='SELECT')return;if(e.key==='ArrowRight'){go(cur+1);e.preventDefault()}if(e.key==='ArrowLeft'){go(cur-1);e.preventDefault()}});
+build();
+})();
+</script>
+
+</body>
+</html>

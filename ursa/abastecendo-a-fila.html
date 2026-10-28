@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Abastecendo as Filas</title>
+<meta name="description" content="Simulador ciclo a ciclo de quem abastece s_a e s_b no URSA v3: porta AXI, burst, read_a com a_buf, read_b sem buffer, e o compute como consumidor.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Leiaute: barra de controle; depois duas faixas (A em cima, B embaixo), cada uma com memória → porta → leitor → fila → consumidor; narrativa e cronograma no fim. */
+:root{--bg:#f7f6f2;--fg:#17201d;--mut:#5c6661;--line:#d6d9d2;--panel:#fff;
+ --a:#d9611f;--a2:#fbe3d3;--b:#2a6fc4;--b2:#d7e5f8;--f:#7b63c2;--f2:#e5ddf6;--c:#1f9a6e;--c2:#d2f0e2;--hl:#ffe9a8;--gr:#9a9a9a;--gr2:#e4e4e4;
+ --sans:"IBM Plex Sans",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15191a;--fg:#e7eae6;--mut:#9aa39e;--line:#2d3432;--panel:#1d2324;
+ --a:#f08a4b;--a2:#4a2d1c;--b:#6fa6ea;--b2:#1f3350;--f:#a995e6;--f2:#2f2846;--c:#4dc593;--c2:#1b3b2e;--hl:#5a4a16;--gr:#777;--gr2:#333;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#15191a;--fg:#e7eae6;--mut:#9aa39e;--line:#2d3432;--panel:#1d2324;
+ --a:#f08a4b;--a2:#4a2d1c;--b:#6fa6ea;--b2:#1f3350;--f:#a995e6;--f2:#2f2846;--c:#4dc593;--c2:#1b3b2e;--hl:#5a4a16;--gr:#777;--gr2:#333;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:13px;line-height:1.4;padding:12px 16px}
+h1{font-size:18px;margin:0 0 2px;font-weight:600}.sub{color:var(--mut);margin:0 0 10px;max-width:90ch}
+code,.mono{font-family:var(--mono);font-size:12px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.bar label{display:flex;gap:4px;align-items:center;color:var(--mut);font-size:12px}
+.bar input,.bar select{font:inherit;width:52px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg)}.bar select{width:auto}
+button{font:inherit;font-weight:500;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg);cursor:pointer}
+button:hover{border-color:var(--mut)}button:focus-visible{outline:2px solid var(--b);outline-offset:1px}button.primary{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.cyc{font-family:var(--mono);font-size:15px;font-weight:500;min-width:12ch}
+.row{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1.35fr) minmax(0,1fr) minmax(0,.8fr);gap:10px;margin-top:12px}
+@media (max-width:1100px){.row{grid-template-columns:1fr 1fr}}@media (max-width:640px){.row{grid-template-columns:1fr}}
+.panel{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:10px;min-width:0}
+.panel h2{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:0 0 6px;font-weight:600}
+.panel.A h2{color:var(--a)}.panel.B h2{color:var(--b)}
+h3{font-size:12px;margin:8px 0 4px;font-weight:600}
+.word{display:inline-flex;align-items:center;margin:2px 5px 2px 0;border:1px solid var(--line);border-radius:5px;overflow:hidden;font-family:var(--mono);font-size:11px;background:var(--panel)}
+.word .k{padding:2px 5px;background:var(--bg);color:var(--mut);border-right:1px solid var(--line)}
+.word .byte{padding:2px 6px;min-width:12px;text-align:center;border-right:1px solid var(--line)}.word .byte:last-child{border-right:0}
+.word.A{border-color:var(--a)}.word.B{border-color:var(--b)}.word.F{border-color:var(--f);background:var(--f2)}.word.BUF{border-color:var(--a);background:var(--a2)}
+.word.now{box-shadow:0 0 0 2px var(--hl)}.word.empty{opacity:.35}.word.done{opacity:.5}
+.st{color:var(--mut);font-size:12px;margin-top:2px}
+.state{display:inline-block;padding:3px 8px;border-radius:5px;font-family:var(--mono);font-size:12px;border:1px solid var(--line);background:var(--bg);margin:2px 4px 2px 0}
+.state.on{background:var(--hl);border-color:var(--hl);color:#000}
+.state.lat{background:var(--gr2);border-color:var(--gr)}
+.counter{font-family:var(--mono);font-size:11.5px;margin:0;white-space:pre-wrap}
+.port{border:1px dashed var(--line);border-radius:6px;padding:6px 8px;margin:6px 0}
+.port .lab{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+.story{margin-top:12px}.story ol{margin:4px 0 0 18px;padding:0}.story li{margin:3px 0}.story .who{font-family:var(--mono);font-weight:500}
+.ln{display:grid;grid-template-columns:90px 1fr;gap:6px;align-items:center;margin:3px 0}.ln .n{font-family:var(--mono);font-size:11px;text-align:right;color:var(--mut)}
+.ln .b{height:13px;display:flex;border:1px solid var(--line);border-radius:3px;overflow:hidden;position:relative}.ln .s{height:100%;flex:none}.cur{position:absolute;top:0;bottom:0;width:2px;background:var(--fg)}
+.leg{display:flex;gap:12px;flex-wrap:wrap;color:var(--mut);font-size:11px;margin-top:6px}.leg i{display:inline-block;width:12px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:3px}
+.occ{display:flex;align-items:flex-end;gap:1px;height:36px;border-bottom:1px solid var(--line)}.occ div{flex:1;background:var(--f);opacity:.75}.occ div.cur{position:static;width:auto;background:var(--fg);opacity:1}
+kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:3px;padding:0 4px}
+.note{color:var(--mut);font-size:12px;max-width:95ch;margin-top:10px}
+.tag{display:inline-block;font-size:10px;padding:0 5px;border-radius:3px;background:var(--bg);color:var(--mut);border:1px solid var(--line);margin-left:4px}
+</style>
+</head>
+<body>
+<h1>Abastecendo as filas: quem escreve em <span class="mono">s_a</span> e <span class="mono">s_b</span></h1>
+<p class="sub">O lado de fora do array, um ciclo por vez. Dois processos independentes, <code>read_a</code> e <code>read_b</code>, lêem as portas AXI e enchem as filas; o <code>compute</code> aparece só como consumidor (tira M palavras por tile e ocupa T = M + 2(n − 1) ciclos por tile). Avance com os botões ou <kbd>→</kbd> <kbd>←</kbd>.</p>
+
+<div class="bar">
+  <label>n <select id="n"><option selected>2</option><option>4</option><option>8</option></select></label>
+  <label>P <input id="P" type="number" value="4" min="2"></label>
+  <label>M <input id="M" type="number" value="4" min="1" max="16"></label>
+  <label>Q <input id="Q" type="number" value="4" min="2"></label>
+  <label>profundidade das filas <input id="depth" type="number" value="32" min="1" max="32"></label>
+  <label>latência do burst <input id="lat" type="number" value="0" min="0" max="30"></label>
+  <label>semente <input id="seed" type="number" value="1" min="0"></label>
+  <button id="reset">Reconstruir</button>
+  <span style="flex:1"></span>
+  <button id="first">⏮</button><button id="back">◀ ciclo</button>
+  <span class="cyc" id="cyc"></span>
+  <button id="fwd" class="primary">ciclo ▶</button><button id="last">⏭</button>
+</div>
+
+<div class="row">
+  <div class="panel A"><h2>1 · Memória: janela A (tile-major)</h2>
+    <div class="st">uma palavra = coluna k de uma linha de tiles = n bytes; a linha de tiles inteira é um trecho contíguo (um burst)</div>
+    <div id="memA"></div>
+    <div class="port"><div class="lab">porta A (AXI master)</div><div id="portA"></div></div>
+  </div>
+  <div class="panel A"><h2>2 · Processo read_a</h2>
+    <div id="stA"></div>
+    <pre class="counter" id="cntA"></pre>
+    <h3>a_buf (LUTRAM com endereço, <span id="kwA"></span> de 256 palavras em uso)</h3>
+    <div id="abuf"></div>
+    <div class="st">na 1ª passada de cada linha de tiles, a palavra lida da porta vai para <b>a_buf[w]</b> e para <b>s_a</b> ao mesmo tempo; nas outras passadas o read_a copia <b>a_buf[w] → s_a</b> e a porta fica parada</div>
+  </div>
+  <div class="panel A"><h2>3 · Fila s_a (hls::stream, SRL)</h2>
+    <div id="fifoA"></div>
+    <h3>ocupação ao longo do tempo</h3>
+    <div class="occ" id="occA"></div>
+  </div>
+  <div class="panel"><h2>4 · Consumidor: compute</h2>
+    <div id="ck"></div>
+    <pre class="counter" id="cntC"></pre>
+    <div class="st">a palavra tirada vai para a borda esquerda (byte i → linha i, atrasada i ciclos pelos registradores de skew); isso está no outro simulador</div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="panel B"><h2>1 · Memória: janela B (tile-major)</h2>
+    <div class="st">uma palavra = linha k de um tile de coluna = n bytes; todos os tiles de coluna seguidos formam um único burst</div>
+    <div id="memB"></div>
+    <div class="port"><div class="lab">porta B (AXI master)</div><div id="portB"></div></div>
+  </div>
+  <div class="panel B"><h2>2 · Processo read_b</h2>
+    <div id="stB"></div>
+    <pre class="counter" id="cntB"></pre>
+    <h3>buffer</h3>
+    <div class="st">não há: B inteiro é relido da porta para cada linha de tiles de A (P/n vezes). É o operando que fica em memória; A é o que fica no chip.</div>
+  </div>
+  <div class="panel B"><h2>3 · Fila s_b (hls::stream, SRL)</h2>
+    <div id="fifoB"></div>
+    <h3>ocupação ao longo do tempo</h3>
+    <div class="occ" id="occB"></div>
+  </div>
+  <div class="panel"><h2>Resumo das portas</h2>
+    <pre class="counter" id="cntP"></pre>
+  </div>
+</div>
+
+<div class="panel story"><h2>O que aconteceu neste ciclo</h2><ol id="story"></ol></div>
+
+<div class="panel" style="margin-top:10px"><h2>Cronograma</h2><div id="gantt"></div>
+  <div class="leg"><span><i style="background:var(--a)"></i>porta A: burst</span><span><i style="background:var(--a2)"></i>read_a repete a_buf (porta parada)</span><span><i style="background:var(--b)"></i>porta B: burst</span><span><i style="background:var(--gr)"></i>latência do burst</span><span><i style="background:var(--gr2)"></i>fila cheia / terminou</span><span><i style="background:#f0a35e"></i>compute: passo com dado</span><span><i style="background:#f6d9bf"></i>compute: esvaziamento (zeros)</span><span><i style="background:#ddd"></i>compute: espera</span></div>
+</div>
+<p class="note">Fiel ao shell.cpp do v3 (laços RA_ROW / RA_FIRST / RA_REPLAY e RB_ROW / RB_STREAM) com três simplificações: (1) uma palavra de porta = uma palavra de fila (no 2×2 real, LANES = 2, cada beat de 32 bits carrega duas palavras de 16 bits); (2) a latência do burst é um valor fixo pago uma vez no início de cada burst, isto é, uma vez por linha de tiles em cada porta; (3) o compute é só o consumidor: sombra, s_c e write_c estão no simulador do caminho do dado. Ordem dentro do ciclo: primeiro o compute tira, depois os leitores põem; por isso uma palavra posta no ciclo c só pode ser tirada no ciclo c + 1.</p>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+let cfg,trace=[],cur=0;
+function rng(seed){let s=(seed+7)>>>0||1;return()=>{s^=s<<13;s>>>=0;s^=s>>>17;s^=s<<5;s>>>=0;return s/4294967296}}
+function build(){
+  const n=+$('n').value,depth=+$('depth').value,lat=+$('lat').value,seed=+$('seed').value;
+  const P=Math.max(n,Math.ceil(+$('P').value/n)*n),Q=Math.max(n,Math.ceil(+$('Q').value/n)*n),M=Math.max(1,Math.min(16,+$('M').value));
+  $('P').value=P;$('Q').value=Q;$('M').value=M;$('kwA').textContent=M;
+  const r=rng(seed);
+  const A=Array.from({length:P},()=>Array.from({length:M},()=>Math.floor(r()*5)-2));
+  const B=Array.from({length:M},()=>Array.from({length:Q},()=>Math.floor(r()*4)));
+  const rows=P/n,cols=Q/n,NT=rows*cols,T=M+2*n-2;
+  cfg={n,P,M,Q,depth,lat,A,B,rows,cols,NT,T};
+  const s={sa:[],sb:[],ra:{it:0,w:0,phase:'first',rep:0,lat:lat,done:false},rb:{it:0,nw:0,lat:lat,done:false},
+    abuf:Array(M).fill(null),abufRow:-1,tile:0,t:0,cnt:{aMem:0,aRep:0,bMem:0,steps:0,stalls:0,latA:0,latB:0,fullA:0,fullB:0}};
+  trace=[];let g=0;
+  while(g++<40000){
+    const ev={ra:'idle',rb:'idle',ck:'idle',story:[],pushA:null,pushB:null,pop:null,abufW:null,abufR:null};
+    // ---- compute (consumidor)
+    if(s.tile<NT){
+      let go=true,wa=null,wb=null;
+      if(s.t<M){if(s.sa.length&&s.sb.length){wa=s.sa.shift();wb=s.sb.shift()}else go=false}
+      if(go){
+        if(wa){ev.pop={a:wa,b:wb};ev.ck='d';ev.story.push(['compute',`tile ${s.tile}, passo t = ${s.t}: tira de s_a a palavra k = ${wa.k} (${wa.src}) → bytes [${wa.vals.join(', ')}] e de s_b a palavra k = ${wb.k} (tile de coluna ${wb.jt}) → bytes [${wb.vals.join(', ')}]; manda para o skew e a borda`])}
+        else{ev.ck='f';ev.story.push(['compute',`tile ${s.tile}, passo t = ${s.t}: esvaziamento, não tira nada; zeros entram nas cadeias`])}
+        s.cnt.steps++;
+        if(s.t===T-1){ev.story.push(['compute',`fim do tile ${s.tile} (T = ${T}); acumuladores → sombra; ${s.tile+1<NT?`tile ${s.tile+1} começa no próximo ciclo`:'era o último tile'}`]);s.tile++;s.t=0}else s.t++;
+      }else{ev.ck='stall';s.cnt.stalls++;ev.story.push(['compute',`espera: ${!s.sa.length?'s_a':'s_b'} está vazia (tile ${s.tile}, passo t = ${s.t})`])}
+    }
+    // ---- read_a
+    if(!s.ra.done){
+      if(s.sa.length>=depth){ev.ra='full';s.cnt.fullA++;ev.story.push(['read_a',`s_a está cheia (${depth}/${depth}); espera o compute tirar uma palavra`])}
+      else if(s.ra.phase==='first'){
+        if(s.ra.lat>0){s.ra.lat--;ev.ra='lat';s.cnt.latA++;ev.story.push(['read_a',`RA_FIRST, linha de tiles ${s.ra.it}: pediu o burst de ${M} palavras na porta A (endereços ${s.ra.it*M}..${s.ra.it*M+M-1}); esperando o primeiro beat (${s.ra.lat+1} ciclo${s.ra.lat?'s':''})`])}
+        else{const w=s.ra.w,vals=Array.from({length:n},(_,i)=>A[s.ra.it*n+i][w]);
+          s.abuf[w]={vals,row:s.ra.it};s.abufRow=s.ra.it;ev.abufW=w;s.sa.push({k:w,vals,src:'da porta, linha de tiles '+s.ra.it});ev.pushA=w;ev.ra='mem';s.cnt.aMem++;
+          ev.story.push(['read_a',`RA_FIRST: beat ${w+1}/${M} do burst chega na porta A: palavra k = ${w} = [${vals.join(', ')}] (A[${s.ra.it*n}..${s.ra.it*n+n-1}][${w}]); escreve em a_buf[${w}] e em s_a`]);
+          s.ra.w++;if(s.ra.w===M){if(cols>1){s.ra.phase='replay';s.ra.rep=0;s.ra.w=0;ev.story.push(['read_a',`burst da linha de tiles ${s.ra.it} terminou: a_buf completo; a partir do próximo ciclo repete a_buf para os outros ${cols-1} tile${cols>2?'s':''} de coluna`])}else nextRow(ev)}}
+      }else{const w=s.ra.w,vals=s.abuf[w].vals;s.sa.push({k:w,vals,src:'do a_buf, linha de tiles '+s.ra.it});ev.pushA=w;ev.abufR=w;ev.ra='rep';s.cnt.aRep++;
+        const tc=Math.floor(s.ra.rep/M)+1;
+        ev.story.push(['read_a',`RA_REPLAY: lê a_buf[${w}] = [${vals.join(', ')}] e põe em s_a (tile de coluna ${tc} da linha de tiles ${s.ra.it}); a porta A não é tocada`]);
+        s.ra.w=(s.ra.w+1)%M;s.ra.rep++;if(s.ra.rep===(cols-1)*M)nextRow(ev)}
+    }
+    function nextRow(ev){s.ra.it++;s.ra.phase='first';s.ra.w=0;s.ra.lat=lat;if(s.ra.it===rows){s.ra.done=true;ev.story.push(['read_a','terminou: todas as linhas de tiles de A foram lidas uma vez e repetidas'])}else ev.story.push(['read_a',`linha de tiles ${s.ra.it-1} completa; próximo: burst da linha de tiles ${s.ra.it} na porta A${lat?' (paga a latência de novo)':''}`])}
+    // ---- read_b
+    if(!s.rb.done){
+      if(s.sb.length>=depth){ev.rb='full';s.cnt.fullB++;ev.story.push(['read_b',`s_b está cheia (${depth}/${depth}); espera`])}
+      else if(s.rb.lat>0){s.rb.lat--;ev.rb='lat';s.cnt.latB++;ev.story.push(['read_b',`RB_STREAM, linha de tiles ${s.rb.it}: pediu o burst de ${cols*M} palavras (B inteiro) na porta B; esperando o primeiro beat (${s.rb.lat+1} ciclo${s.rb.lat?'s':''})`])}
+      else{const nw=s.rb.nw,jt=Math.floor(nw/M),k=nw%M,vals=Array.from({length:n},(_,j)=>B[k][jt*n+j]);s.sb.push({k,vals,jt});ev.pushB=nw;ev.rb='mem';s.cnt.bMem++;
+        ev.story.push(['read_b',`RB_STREAM: beat ${nw+1}/${cols*M} chega na porta B: palavra k = ${k} do tile de coluna ${jt} = [${vals.join(', ')}] (B[${k}][${jt*n}..${jt*n+n-1}]); põe em s_b`]);
+        s.rb.nw++;if(s.rb.nw===cols*M){s.rb.nw=0;s.rb.it++;s.rb.lat=lat;if(s.rb.it===rows){s.rb.done=true;ev.story.push(['read_b','terminou: B foi lido uma vez por linha de tiles de A'])}else ev.story.push(['read_b',`B inteiro passou (${cols*M} palavras); para a linha de tiles ${s.rb.it} de A, B é lido de novo da porta${lat?' (paga a latência de novo)':''}`])}}
+    }
+    trace.push({ev,sa:s.sa.map(x=>({...x})),sb:s.sb.map(x=>({...x})),abuf:s.abuf.map(x=>x?{vals:x.vals.slice(),row:x.row}:null),abufRow:s.abufRow,ra:{...s.ra},rb:{...s.rb},tile:Math.min(s.tile,NT-1),t:s.t,done:s.tile>=NT,cnt:{...s.cnt}});
+    if(s.tile>=NT)break;
+  }
+  cur=0;gantt();show();
+}
+const word=(cls,k,vals,extra='')=>`<span class="word ${cls} ${extra}"><span class="k">k=${k}</span>${vals.map(v=>`<span class="byte">${v}</span>`).join('')}</span>`;
+function show(){
+  const f=trace[cur],ev=f.ev,{n,P,M,Q,A,B,rows,cols,NT,T,depth,lat}=cfg;
+  $('cyc').textContent=`ciclo ${cur+1} / ${trace.length}`;
+  // memória A
+  let h='';for(let r=0;r<rows;r++){const act=!f.ra.done&&f.ra.it===r;h+=`<div><span class="st">linha de tiles ${r} (A[${r*n}..${r*n+n-1}][·]), endereços ${r*M}..${r*M+M-1}${act?' <span class="tag">burst atual</span>':f.ra.it>r||f.ra.done?' <span class="tag">já lida</span>':''}</span><br>`;
+    for(let k=0;k<M;k++){const vals=Array.from({length:n},(_,i)=>A[r*n+i][k]);h+=word('A',k,vals,(ev.ra==='mem'&&ev.pushA===k&&f.ra.it===r&&f.ra.phase==='first'&&!(f.ra.w===0&&k===M-1&&false))?'now':(f.ra.it>r||f.ra.done||(f.ra.it===r&&(f.ra.phase==='replay'||f.ra.w>k)))?'done':'')}h+='</div>'}
+  $('memA').innerHTML=h;
+  $('portA').innerHTML={mem:`<span class="state on">burst em andamento</span> beat ${f.ra.phase==='first'?f.ra.w:M}/${M} da linha de tiles ${f.ra.it}`,lat:`<span class="state lat">esperando a latência</span> ${f.ra.lat+1} ciclo(s) até o primeiro beat`,rep:`<span class="state">parada</span> read_a está repetindo a_buf`,full:`<span class="state">parada</span> fila cheia (contrapressão)`,idle:`<span class="state">parada</span> read_a terminou`}[ev.ra];
+  // read_a
+  const phA=f.ra.done?'terminou':f.ra.phase==='first'?(ev.ra==='lat'?'RA_FIRST (latência)':'RA_FIRST'):'RA_REPLAY';
+  $('stA').innerHTML=['RA_FIRST','RA_REPLAY','terminou'].map(x=>`<span class="state ${phA.startsWith(x)?'on':''}">${x}</span>`).join('');
+  $('cntA').textContent=`it (linha de tiles) = ${Math.min(f.ra.it,rows-1)} de ${rows}\nw (palavra)        = ${f.ra.phase==='first'?f.ra.w:f.ra.w}\n${f.ra.phase==='replay'?`rep (repetições)   = ${f.ra.rep} de ${(cols-1)*M}`:`faltam no burst    = ${M-f.ra.w}`}\npalavras da porta  = ${f.cnt.aMem} (= ${rows} linhas × ${M})\npalavras do a_buf  = ${f.cnt.aRep} (= ${rows} × ${cols-1} × ${M})`;
+  h='';const curRow=f.ra.done?f.abufRow:f.ra.it;let old=0;
+  for(let w=0;w<M;w++){const v=f.abuf[w];if(v&&v.row!==curRow)old++;h+=v?word('BUF',w,v.vals,(ev.abufW===w||ev.abufR===w)?'now':v.row!==curRow?'done':''):`<span class="word empty"><span class="k">a_buf[${w}]</span><span class="byte">·</span></span>`}
+  $('abuf').innerHTML=h+`<div class="st">${f.abufRow>=0?`linha de tiles ${curRow}${old?` (${old} palavra${old>1?'s':''} ainda da linha anterior, serão sobrescritas)`:''}`:'vazio'}${ev.abufW!==null?` · <b>escrevendo a_buf[${ev.abufW}]</b>`:''}${ev.abufR!==null?` · <b>lendo a_buf[${ev.abufR}]</b>`:''}</div>`;
+  // fifo A
+  const fifo=(items,cls,pop)=>Array.from({length:depth},(_,i)=>i<items.length?word(cls+' F',items[i].k,items[i].vals,''):`<span class="word empty"><span class="k">·</span></span>`).join('')+`<div class="st">${items.length}/${depth} ocupado · entra pela direita (${cls==='A'?'read_a':'read_b'}), sai pela esquerda (compute)${pop?` · <b>tirada neste ciclo: k = ${pop.k}</b>`:''}</div>`;
+  $('fifoA').innerHTML=fifo(f.sa,'A',ev.pop&&ev.pop.a);$('fifoB').innerHTML=fifo(f.sb,'B',ev.pop&&ev.pop.b);
+  const occ=(key)=>{const mx=Math.max(1,...trace.map(x=>x[key].length));return trace.map((x,i)=>`<div class="${i===cur?'cur':''}" style="height:${Math.max(2,x[key].length/mx*100)}%" title="ciclo ${i+1}: ${x[key].length}"></div>`).join('')};
+  $('occA').innerHTML=occ('sa');$('occB').innerHTML=occ('sb');
+  // compute
+  const ckTxt={d:`<span class="state on">passo com dado</span>`,f:`<span class="state on">esvaziamento</span>`,stall:`<span class="state lat">espera</span>`,idle:`<span class="state">terminou</span>`}[ev.ck];
+  $('ck').innerHTML=ckTxt;
+  const it=Math.floor(f.tile/cols),jt=f.tile%cols;
+  $('cntC').textContent=f.done?`todos os ${NT} tiles calculados\npassos do array = ${f.cnt.steps}\nesperas         = ${f.cnt.stalls}`:`tile ${f.tile} de ${NT} = (linha de tiles ${it}, tile de coluna ${jt})\npróximo passo t = ${f.t} de ${T}  (${f.t<M?'tira palavra':'zeros'})\npassos do array = ${f.cnt.steps}\nesperas         = ${f.cnt.stalls}`;
+  // memória B
+  h='';for(let j=0;j<cols;j++){h+=`<div><span class="st">tile de coluna ${j} (B[·][${j*n}..${j*n+n-1}]), endereços ${j*M}..${j*M+M-1}</span><br>`;
+    for(let k=0;k<M;k++){const vals=Array.from({length:n},(_,x)=>B[k][j*n+x]);const idx=j*M+k;h+=word('B',k,vals,(ev.rb==='mem'&&ev.pushB===idx)?'now':(!f.rb.done&&idx<f.rb.nw)?'done':'')}h+='</div>'}
+  $('memB').innerHTML=h+`<div class="st">passada ${Math.min(f.rb.it+1,rows)} de ${rows} por B (uma por linha de tiles de A)</div>`;
+  $('portB').innerHTML={mem:`<span class="state on">burst em andamento</span> beat ${f.rb.nw||cols*M}/${cols*M} (passada ${Math.min(f.rb.it+(f.rb.nw?1:0),rows)})`,lat:`<span class="state lat">esperando a latência</span> ${f.rb.lat+1} ciclo(s) até o primeiro beat`,full:`<span class="state">parada</span> fila cheia (contrapressão)`,idle:`<span class="state">parada</span> read_b terminou`}[ev.rb];
+  $('stB').innerHTML=`<span class="state ${f.rb.done?'':'on'}">RB_STREAM${ev.rb==='lat'?' (latência)':''}</span><span class="state ${f.rb.done?'on':''}">terminou</span>`;
+  $('cntB').textContent=`it (linha de tiles de A) = ${Math.min(f.rb.it,rows-1)} de ${rows}\nn (palavra do burst)     = ${f.rb.nw} de ${cols*M}\npalavras da porta        = ${f.cnt.bMem} (= ${rows} × ${cols*M})`;
+  $('cntP').textContent=`porta A: ${f.cnt.aMem} beats, ${f.cnt.latA} ciclos de latência, ${f.cnt.fullA} parada por fila cheia\nporta B: ${f.cnt.bMem} beats, ${f.cnt.latB} ciclos de latência, ${f.cnt.fullB} parada por fila cheia\n\nA lido ${rows}× da memória, repetido ${cols-1}× do a_buf\nB lido ${rows}× da memória, sem buffer\n\nbursts: A = ${rows} (um por linha de tiles), B = ${rows}\n\ntiles ${NT} × T ${T} = ${NT*T} ciclos ideais\nesta execução: ${trace.length} ciclos`;
+  $('story').innerHTML=ev.story.length?ev.story.map(([w,t])=>`<li><span class="who">${w}</span>: ${t}</li>`).join(''):'<li>nada</li>';
+  $('gantt').querySelectorAll('.cur').forEach(e=>e.style.left=(cur/trace.length*100)+'%');
+}
+function gantt(){
+  const col={ra:{mem:'var(--a)',rep:'var(--a2)',lat:'var(--gr)',full:'var(--gr2)',idle:'var(--gr2)'},rb:{mem:'var(--b)',lat:'var(--gr)',full:'var(--gr2)',idle:'var(--gr2)'},ck:{d:'#f0a35e',f:'#f6d9bf',stall:'#ddd',idle:'transparent'}};
+  let h='';for(const [nm,key] of [['porta A / read_a','ra'],['porta B / read_b','rb'],['compute','ck']]){h+=`<div class="ln"><div class="n">${nm}</div><div class="b">`;let st=0,prev=null;const segs=[];
+    trace.forEach((f,i)=>{const c=f.ev[key];if(c!==prev){if(prev!==null)segs.push([st,i,prev]);st=i;prev=c}});segs.push([st,trace.length,prev]);
+    for(const [a,b,c] of segs)h+=`<div class="s" style="width:${(b-a)/trace.length*100}%;background:${col[key][c]||'transparent'}"></div>`;h+='<div class="cur"></div></div></div>'}
+  $('gantt').innerHTML=h;
+}
+function go(i){cur=Math.max(0,Math.min(trace.length-1,i));show()}
+$('reset').onclick=build;$('first').onclick=()=>go(0);$('last').onclick=()=>go(trace.length-1);$('back').onclick=()=>go(cur-1);$('fwd').onclick=()=>go(cur+1);
+document.addEventListener('keydown',e=>{if(['INPUT','SELECT'].includes(e.target.tagName))return;if(e.key==='ArrowRight'){go(cur+1);e.preventDefault()}if(e.key==='ArrowLeft'){go(cur-1);e.preventDefault()}});
+build();
+})();
+</script>
+</body>
+</html>

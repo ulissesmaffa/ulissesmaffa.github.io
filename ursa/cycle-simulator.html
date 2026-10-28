@@ -1,6 +1,10 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>URSA v3 Cycle Simulator</title>
-<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="URSA v3 cycle simulator: the streaming shell of the URSA systolic array, one clock cycle at a time.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: a control bar on top, then a 3-column "board": memory (A, B, C) | shell (processes, FIFOs, array) | log; Gantt across the bottom. */
@@ -68,6 +72,8 @@ button.primary{background:var(--fg);color:var(--bg);border-color:var(--fg)}
 kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:3px;padding:0 4px}
 .note{color:var(--mut);font-size:12px;max-width:80ch;margin-top:10px}
 </style>
+</head>
+<body>
 
 <h1>URSA v3 cycle simulator</h1>
 <p class="sub">The streaming shell, one clock cycle at a time: read_a, read_b, compute and write_c as four concurrent processes, the three FIFOs between them, the output-stationary array with its real systolic timing, the shadow registers and the tile-major C. Step with the buttons or <kbd>→</kbd> <kbd>←</kbd>.</p>
@@ -269,4 +275,5 @@ build();
 })();
 </script>
 
-</body></html>
+</body>
+</html>

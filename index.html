@@ -10,10 +10,12 @@ body{margin:0;background:#fff;color:#222;font:17px/1.6 "Lato",Helvetica,Arial,sa
 main{max-width:700px;margin:0 auto;padding:40px 20px 60px}
 h1{font-size:30px;font-weight:700;margin:0 0 4px}
 h2{font-size:21px;font-weight:700;margin:36px 0 10px}
+h3{font-size:17px;font-weight:700;margin:18px 0 6px;color:#444}
 .role{color:#555;margin:0 0 20px}
 a{color:#1a5fb4}
 ul{padding-left:20px;margin:0}
 li{margin-bottom:10px}
+.lang{color:#777;font-size:14px}
 </style>
 </head>
 <body>
@@ -21,15 +23,22 @@ li{margin-bottom:10px}
   <h1>Ulisses Maffazioli</h1>
   <p class="role">Computer Engineer · M.Sc. in Microelectronics, UFRGS · Porto Alegre, Brazil</p>
   <p>I work on fault-tolerant hardware accelerators and RISC-V systems for radiation environments, in the Chi2P group at UFRGS advised by Prof. Fernanda Lima Kastensmidt. My work covers HLS/FPGA accelerator design, the ASIC flow of a RISC-V SoC taped out in 180 nm, DFT and heavy-ion radiation testing. I also teach DFT and physical design in the CI-Expert program.</p>
-  <p><a href="https://linkedin.com/in/ulissesmaffa">LinkedIn</a> · <a href="https://github.com/ulissesmaffa">GitHub</a> · <a href="https://scholar.google.com/citations?user=-OWngHUAAAAJ">Google Scholar</a> ·<a href="mailto:ulissesmaffa@gmail.com">E-mail</a></p>
+  <p><a href="https://linkedin.com/in/ulissesmaffa">LinkedIn</a> · <a href="https://github.com/ulissesmaffa">GitHub</a> · <a href="https://scholar.google.com/citations?user=-OWngHUAAAAJ">Google Scholar</a> · <a href="mailto:ulissesmaffa@gmail.com">E-mail</a></p>
 
   <h2>Publications</h2>
   <p>Coming soon.</p>
 
   <h2>Tools and simulators</h2>
+  <h3>URSA v3: interactive cycle-level simulators</h3>
+  <p>URSA is an HLS systolic-array GEMM accelerator for the Zynq-7000. These pages step through its v3 streaming shell one clock cycle at a time, from the outside in.</p>
   <ul>
-    <li><a href="ursa/cycle-simulator.html">URSA v3 cycle simulator</a>: the streaming shell of the URSA systolic array, one clock cycle at a time (in English).</li>
-    <li><a href="ursa/caminho-do-dado.html">Caminho do dado no URSA v3</a>: from the memory word to each PE accumulator, one cycle at a time (in Portuguese).</li>
+    <li><a href="ursa/cycle-simulator.html">URSA v3 cycle simulator</a> <span class="lang">(English)</span>: the whole shell: read_a, read_b, compute and write_c as four concurrent processes, the FIFOs between them, the output-stationary array, the shadow registers and the tile-major C.</li>
+    <li><a href="ursa/abastecendo-a-fila.html">Abastecendo as filas</a> <span class="lang">(Portuguese)</span>: who feeds the FIFOs s_a and s_b: the AXI ports, bursts and their latency, read_a with its a_buf replay, read_b without a buffer, and compute as the consumer.</li>
+    <li><a href="ursa/caminho-do-dado.html">Caminho do dado no URSA v3</a> <span class="lang">(Portuguese)</span>: from the memory word to each PE accumulator: FIFOs, skew registers, array edges, the PEs, the shadow copy and the write of C.</li>
+    <li><a href="ursa/alimentando-a-borda.html">Alimentando a borda do array</a> <span class="lang">(Portuguese)</span>: the interface between shell and array only: the word popped from the FIFO, the skew chains dA and dB, the edge registers and what each PE multiplies at each step.</li>
+  </ul>
+  <h3>Other</h3>
+  <ul>
     <li><a href="https://github.com/ulissesmaffa/rclone-oauth">rclone-oauth</a>: helper for setting up rclone with Google Drive.</li>
   </ul>
 </main>

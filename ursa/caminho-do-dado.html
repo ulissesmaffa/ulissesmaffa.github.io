@@ -1,6 +1,10 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Caminho do Dado no URSA v3</title>
-<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Caminho do dado no URSA v3: da palavra na memória até o acumulador de cada PE, um ciclo por vez.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Leiaute: barra de controle; depois o caminho do dado em três colunas (A à esquerda, B em cima do array, C à direita); narrativa do ciclo embaixo. */
@@ -35,13 +39,13 @@ h3{font-size:12px;margin:10px 0 4px;font-weight:600}
 .reg.zero{opacity:.55}
 .path{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:4px 0}
 .arrow{color:var(--mut);font-size:16px}
-.pes{display:inline-grid;gap:6px;margin:6px 0}
+.pes{display:grid;width:max-content;gap:6px;margin:6px 0}
 .pe{width:118px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:var(--mono);font-size:10.5px;background:var(--panel)}
 .pe.on{border-color:var(--a);background:var(--a2)}.pe .t{color:var(--mut)}.pe .ba{font-size:14px;font-weight:500;margin-top:2px}
 .pe .mul{color:var(--mut)}
 .lane{display:flex;gap:6px;align-items:flex-start}
-.colB{display:inline-grid;gap:6px;margin-bottom:4px}
-.rowA{display:grid;gap:6px;margin-right:6px;margin-top:33px}
+.colB{display:grid;width:max-content;gap:6px;margin-bottom:4px}.colB .reg{margin:0}
+.rowA{display:grid;gap:6px;margin-right:6px;margin-top:36px}
 .mat{display:inline-grid;gap:1px;background:var(--line);border:1px solid var(--line);font-family:var(--mono);font-size:11px}
 .mat .cell{background:var(--panel);min-width:24px;height:20px;display:flex;align-items:center;justify-content:center}
 .mat .cell.ok{background:var(--c2)}.mat .cell.now{background:var(--c);color:#fff}
@@ -55,16 +59,18 @@ h3{font-size:12px;margin:10px 0 4px;font-weight:600}
 kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:3px;padding:0 4px}
 .note{color:var(--mut);font-size:12px;max-width:85ch;margin-top:10px}
 </style>
+</head>
+<body>
 
 <h1>Caminho do dado no URSA v3</h1>
 <p class="sub">Da palavra na memória até o acumulador de cada PE, um ciclo por vez. Os nomes são os do código: <span style="font-family:var(--mono)">s_a, s_b, s_c</span> (filas), <span style="font-family:var(--mono)">dA, dB</span> (registradores de skew), <span style="font-family:var(--mono)">in_mtx_a_li[i], in_mtx_b_tw[j]</span> (borda do array), e em cada PE <span style="font-family:var(--mono)">li, tw, ri, bw, ba</span>. Avance com os botões ou <kbd>→</kbd> <kbd>←</kbd>.</p>
 
 <div class="bar">
   <label>n <select id="n"><option selected>2</option><option>4</option></select></label>
-  <label>P <input id="P" type="number" value="2" min="2"></label>
-  <label>M <input id="M" type="number" value="2" min="1" max="16"></label>
+  <label>P <input id="P" type="number" value="4" min="2"></label>
+  <label>M <input id="M" type="number" value="4" min="1" max="16"></label>
   <label>Q <input id="Q" type="number" value="4" min="2"></label>
-  <label>profundidade das filas <input id="depth" type="number" value="4" min="1" max="32"></label>
+  <label>profundidade das filas <input id="depth" type="number" value="32" min="1" max="32"></label>
   <label>latência do burst <input id="lat" type="number" value="0" min="0" max="30"></label>
   <label>semente <input id="seed" type="number" value="1" min="0"></label>
   <button id="reset">Reconstruir</button>
@@ -249,5 +255,5 @@ document.addEventListener('keydown',e=>{if(['INPUT','SELECT'].includes(e.target.
 build();
 })();
 </script>
-
-</body></html>
+</body>
+</html>
